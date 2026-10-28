@@ -1,30 +1,60 @@
-let questionsBase = [];
+// Questions par défaut au cas où le JSON ne charge pas immédiatement
+let questionsBase = [
+  {
+    "id": 1,
+    "type": "vrai_faux",
+    "categorie": "GAZ",
+    "question": "Il est autorisé de manœuvrer un barrage de gaz où l'indication 'Réseau' apparaît.",
+    "reponse_correcte": false,
+    "explication": "Il est strictly interdit de manœuvrer un barrage où la mention 'réseau' apparaît."
+  },
+  {
+    "id": 2,
+    "type": "methode",
+    "categorie": "Incendie",
+    "question": "Comment opérer sur un feu en espace clos ou semi-clos ?",
+    "methode_suggestion": "💡 **Méthode suggérée** : Répondez sous forme de réflexes de sécurité (position, chemin de repli, réglage de lance).",
+    "reponse_attendue": "Se placer en position basse côté ouvrant, prévoir un chemin de repli, estimer la chaleur (portes/poignées), chercher les signes thermiques, rendre compte au chef d'agrès, régler la lance en jet diffusé d'attaque (500 L/min) et ouvrir prudemment.",
+    "explication_ia": "Analyse de l'IA : Assurez-vous d'avoir mentionné la position basse, le débit de 500 l/min et le compte rendu immédiat."
+  }
+];
+
 let currentQuestion = null;
 
-// Charger les questions depuis le fichier questions.json
+// Chargement dynamique depuis questions.json
 fetch('questions.json')
   .then(response => response.json())
   .then(data => {
-    questionsBase = data;
+    if (Array.isArray(data) && data.length > 0) {
+      questionsBase = data;
+      console.log("Questions JSON chargées avec succès !");
+    }
   })
-  .catch(error => console.error('Erreur de chargement du JSON :', error));
+  .catch(error => console.warn("Fichier questions.json non trouvé, utilisation de la base par défaut.", error));
 
-// Gestion de la clé API dans le navigateur
+// Gestion de la clé API Groq
 function getApiKey() {
   let key = localStorage.getItem("groq_api_key");
   if (!key) {
-    key = prompt("Pour activer l'analyse IA, entrez votre clé API Groq (gsk_...) :");
+    key = prompt("Entrez votre clé API Groq (gsk_...) :");
     if (key) {
-      localStorage.setItem("groq_api_key", key.trim());
+      key = key.trim();
+      localStorage.setItem("groq_api_key", key);
     }
   }
   return key;
 }
 
+// Pour réinitialiser la clé si besoin
+function resetApiKey() {
+  localStorage.removeItem("groq_api_key");
+  alert("Clé API effacée !");
+}
+
 // Lancer une session aléatoire
 function startSession() {
   if (questionsBase.length === 0) {
-    alert("Les questions sont en cours de chargement ou le fichier questions.json est vide.");
+    alert("Les questions sont en cours de chargement...");
     return;
   }
 
@@ -59,7 +89,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// 1. Vrai / Faux
+// 1. Soumission Vrai / Faux
 function submitVF(userChoice) {
   const isCorrect = userChoice === currentQuestion.reponse_correcte;
   showResult(
@@ -69,7 +99,7 @@ function submitVF(userChoice) {
   );
 }
 
-// 2. Ordonnance
+// 2. Soumission Ordonnance
 function renderOrderList(items) {
   const listEl = document.getElementById("order-list");
   listEl.innerHTML = "";
@@ -106,7 +136,7 @@ function submitOrder() {
   );
 }
 
-// 3. Rédaction avec véritable analyse IA via Groq
+// 3. Soumission Rédaction avec Débug de la Clé Groq
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -114,9 +144,14 @@ async function submitMethod() {
     return;
   }
 
-  const apiKey = getApiKey();
+  let apiKey = getApiKey();
+  if (apiKey) {
+    apiKey = apiKey.trim();
+    localStorage.setItem("groq_api_key", apiKey);
+  }
+
   if (!apiKey) {
-    alert("Clé API requise pour utiliser la correction automatique par l'IA.");
+    alert("Clé API requise pour utiliser la correction par l'IA.");
     return;
   }
 
@@ -126,7 +161,7 @@ async function submitMethod() {
     "Vérification des notions clés et des synonymes..."
   );
 
-  const promptSystem = `Tu es un instructeur pompier évaluand un candidat.
+  const promptSystem = `Tu es un instructeur pompier évaluant un candidat.
 Compare la réponse du candidat à la réponse officielle du référentiel.
 Sois souple sur la formulation : si le candidat utilise des synonymes ou des reformulations qui traduisent la bonne idée, valide la notion.
 
@@ -158,7 +193,27 @@ Réponds STRICTEMENT sous forme d'objet JSON valide avec cette structure (sans t
     });
 
     const data = await response.json();
-    const resultIA = JSON.parse(data.choices[0].message.content);
+
+    if (!response.ok || data.error) {
+      const errDetails = data.error ? data.error.message : `Code HTTP ${response.status}`;
+      const keyPreview = apiKey.length > 8 
+        ? `${apiKey.substring(0, 6)}...${apiKey.substring(apiKey.length - 4)}` 
+        : apiKey;
+
+      showResult(
+        "❌ Erreur de connexion Groq",
+        `Détail de l'erreur : ${errDetails}`,
+        `🔑 Clé utilisée : "${keyPreview}" (Longueur : ${apiKey.length} car.)`
+      );
+      return;
+    }
+
+    let content = data.choices[0].message.content.trim();
+    if (content.startsWith("```json")) {
+      content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    }
+
+    const resultIA = JSON.parse(content);
 
     let badge = "✅";
     if (resultIA.statut === "PARTIEL") badge = "⚠️";
@@ -178,14 +233,19 @@ Réponds STRICTEMENT sous forme d'objet JSON valide avec cette structure (sans t
 
   } catch (error) {
     console.error(error);
+    const keyPreview = apiKey.length > 8 
+      ? `${apiKey.substring(0, 6)}...${apiKey.substring(apiKey.length - 4)}` 
+      : apiKey;
+
     showResult(
       "❌ Erreur lors de l'analyse",
-      "Vérifiez votre clé API Groq ou réessayez.",
-      "Si la clé est incorrecte, vous pouvez réinitialiser la clé enregistrée en tapant localStorage.clear() dans la console de votre navigateur."
+      `Message technique : ${error.message}`,
+      `🔑 Clé actuellement enregistrée : "${keyPreview}" (Longueur : ${apiKey.length})`
     );
   }
 }
 
+// Affichage des résultats
 function showResult(statusHtml, expectedText, explanationText) {
   hideAllScreens();
   document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
