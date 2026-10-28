@@ -1,59 +1,46 @@
-// Base de questions tirée directement du PDF fourni
-const questionsBase = [
-  {
-    id: 1,
-    type: "vrai_faux",
-    question: "Il est autorisé de manœuvrer un barrage de gaz où l'indication 'Réseau' apparaît.",
-    reponseCorrecte: false,
-    explication: "Il est strictement interdit de manœuvrer un barrage où la mention 'réseau' apparaît."
-  },
-  {
-    id: 2,
-    type: "ordonnance",
-    question: "Remettez dans l'ordre chronologique les 4 premières étapes de la MGO :",
-    items: ["1. Les reconnaissances", "2. Les sauvetages", "3. Les établissements", "4. La ventilation"],
-    // On mélange l'ordre initial pour l'exercice
-    itemsShuffled: ["3. Les établissements", "1. Les reconnaissances", "4. La ventilation", "2. Les sauvetages"],
-    ordreCorrect: ["1. Les reconnaissances", "2. Les sauvetages", "3. Les établissements", "4. La ventilation"]
-  },
-  {
-    id: 3,
-    type: "methode",
-    question: "Comment opérer sur un feu en espace clos ou semi-clos ?",
-    conseilIA: "💡 **Méthode suggérée** : Indique les positions de sécurité, le cheminement, les contrôles thermiques et le réglage de la lance.",
-    reponseAttendue: "Se placer en position basse côté ouvrant, prévoir un chemin de repli, estimer la chaleur (portes/poignées), chercher les signes thermiques, rendre compte au chef d'agrès, régler la lance en jet diffusé d'attaque (500 L/min) et ouvrir prudemment."
-  }
-];
-
+let questionsBase = [];
 let currentQuestion = null;
+
+// Charger les questions depuis le fichier questions.json
+fetch('questions.json')
+  .then(response => response.json())
+  .then(data => {
+    questionsBase = data;
+  })
+  .catch(error => console.error('Erreur de chargement du JSON :', error));
 
 // Lancer une session aléatoire
 function startSession() {
+  if (questionsBase.length === 0) {
+    alert("Les questions sont en cours de chargement ou le fichier questions.json est vide.");
+    return;
+  }
+
   const randomIndex = Math.floor(Math.random() * questionsBase.length);
   currentQuestion = questionsBase[randomIndex];
   
-  // Masquer l'accueil
   hideAllScreens();
 
-  // Rediriger vers l'écran spécifique selon le TYPE
+  // Redirection selon le TYPE de question
   if (currentQuestion.type === "vrai_faux") {
     document.getElementById("vf-question").innerText = currentQuestion.question;
     document.getElementById("screen-vf").classList.remove("hidden");
   } 
   else if (currentQuestion.type === "ordonnance") {
     document.getElementById("order-question").innerText = currentQuestion.question;
+    // On melange les elements pour le jeu
+    currentQuestion.itemsShuffled = [...currentQuestion.elements_a_ordonner].sort(() => Math.random() - 0.5);
     renderOrderList(currentQuestion.itemsShuffled);
     document.getElementById("screen-order").classList.remove("hidden");
   } 
   else if (currentQuestion.type === "methode") {
     document.getElementById("method-question").innerText = currentQuestion.question;
-    document.getElementById("method-hint").innerHTML = currentQuestion.conseilIA;
+    document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion || "💡 Lisez attentivement la question.";
     document.getElementById("method-input").value = "";
     document.getElementById("screen-method").classList.remove("hidden");
   }
 }
 
-// Gestion des écrans
 function hideAllScreens() {
   document.getElementById("screen-start").classList.add("hidden");
   document.getElementById("screen-vf").classList.add("hidden");
@@ -64,11 +51,11 @@ function hideAllScreens() {
 
 // 1. Soumission Vrai/Faux
 function submitVF(userChoice) {
-  const isCorrect = userChoice === currentQuestion.reponseCorrecte;
+  const isCorrect = userChoice === currentQuestion.reponse_correcte;
   showResult(
     isCorrect ? "✅ Bonne réponse !" : "❌ Mauvaise réponse",
-    `Réponse attendue : ${currentQuestion.reponseCorrecte ? 'VRAI' : 'FAUX'}`,
-    currentQuestion.explication
+    `Réponse attendue : ${currentQuestion.reponse_correcte ? 'VRAI' : 'FAUX'}`,
+    currentQuestion.explication || ""
   );
 }
 
@@ -101,15 +88,15 @@ function moveItem(index, direction) {
 }
 
 function submitOrder() {
-  const isCorrect = JSON.stringify(currentQuestion.itemsShuffled) === JSON.stringify(currentQuestion.ordreCorrect);
+  const isCorrect = JSON.stringify(currentQuestion.itemsShuffled) === JSON.stringify(currentQuestion.elements_a_ordonner);
   showResult(
     isCorrect ? "✅ Séquence parfaite !" : "⚠️ L'ordre n'est pas tout à fait correct",
-    "Ordre correct : " + currentQuestion.ordreCorrect.join(" ➔ "),
+    "Ordre correct : " + currentQuestion.elements_a_ordonner.join(" ➔ "),
     "Mémorisez bien la séquence officielle."
   );
 }
 
-// 3. Soumission Rédaction (Simulation d'analyse IA)
+// 3. Soumission Rédaction
 function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -119,12 +106,11 @@ function submitMethod() {
   
   showResult(
     "📝 Réponse enregistrée & Analysée par l'IA",
-    currentQuestion.reponseAttendue,
-    "Analyse de l'IA : Assurez-vous d'avoir mentionné la position basse, le débit de 500 l/min et le compte rendu immédiat."
+    currentQuestion.reponse_attendue,
+    currentQuestion.explication_ia || "Comparez votre réponse avec la correction officielle ci-dessus."
   );
 }
 
-// Affichage du résultat
 function showResult(statusHtml, expectedText, explanationText) {
   hideAllScreens();
   document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
