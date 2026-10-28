@@ -6,7 +6,7 @@ let questionsBase = [
     "categorie": "GAZ",
     "question": "Il est autorisé de manœuvrer un barrage de gaz où l'indication 'Réseau' apparaît.",
     "reponse_correcte": false,
-    "explication": "Il est strictly interdit de manœuvrer un barrage où la mention 'réseau' apparaît."
+    "explication": "Il est strictement interdit de manœuvrer un barrage où la mention 'réseau' apparaît."
   },
   {
     "id": 2,
@@ -45,10 +45,10 @@ function getApiKey() {
   return key;
 }
 
-// Pour réinitialiser la clé si besoin
+// Fonction pour réinitialiser la clé API
 function resetApiKey() {
   localStorage.removeItem("groq_api_key");
-  alert("Clé API effacée !");
+  alert("🔑 La clé API a été effacée. Une nouvelle clé vous sera demandée lors du prochain test.");
 }
 
 // Lancer une session aléatoire
@@ -136,7 +136,7 @@ function submitOrder() {
   );
 }
 
-// 3. Soumission Rédaction avec Débug de la Clé Groq
+// 3. Soumission Rédaction avec modèle Groq corrigé
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
