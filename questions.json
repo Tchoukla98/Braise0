@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "type": "methode",
+    "categorie": "Incendie",
+    "question": "Que requiert la discipline de la part de l'exécutant ?",
+    "methode_suggestion": "Indique les deux volets : l'obéissance aux ordres ET la recherche de la perfection dans l'exécution.",
+    "reponse_attendue": "La stricte observation des ordres reçus / la recherche à son niveau du résultat escompté et de l'exécution parfaite de tous les actes y concourant."
+  },
+  {
+    "id": 2,
+    "type": "ordonnance",
+    "categorie": "Maniement des lances / MGO",
+    "question": "Remettez dans l'ordre les 8 étapes de la Marche Générale des Opérations (MGO) :",
+    "elements_a_ordonner": [
+      "Les reconnaissances",
+      "Les sauvetages",
+      "Les établissements",
+      "La ventilation",
+      "L'attaque",
+      "La protection",
+      "Le déblai et dégarnissage",
+      "La surveillance"
+    ]
+  },
+  {
+    "id": 3,
+    "type": "vrai_faux",
+    "categorie": "Gaz",
+    "question": "Il est autorisé d'ouvrir à nouveau un barrage général de GAZ une fois coupé.",
+    "reponse_correcte": false,
+    "explication": "Il est strictement interdit d'ouvrir à nouveau un barrage général."
+  }
+]
