@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Braise0 — Révision Pompiers</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>🔥 Braise0</h1>
+    <p>Application de révision — Concours & Rengagement</p>
+  </header>
+
+  <main class="container">
+    <!-- Écran d'accueil -->
+    <div id="screen-start" class="card">
+      <h2>Prêt pour la révision ?</h2>
+      <p>L'IA va sélectionner des questions aléatoires dans ta base de connaissances.</p>
+      <button onclick="startSession()" class="btn-primary">Lancer un tirage aléatoire</button>
+    </div>
+
+    <!-- Écran VRAI / FAUX -->
+    <div id="screen-vf" class="card hidden">
+      <span class="badge badge-vf">Vrai / Faux</span>
+      <h3 id="vf-question"></h3>
+      
+      <div class="options-group">
+        <button onclick="submitVF(true)" class="btn-vf btn-vrai">VRAI</button>
+        <button onclick="submitVF(false)" class="btn-vf btn-faux">FAUX</button>
+      </div>
+    </div>
+
+    <!-- Écran ORDONNANCE (Mettre dans l'ordre) -->
+    <div id="screen-order" class="card hidden">
+      <span class="badge badge-order">Ordre Chronologique</span>
+      <h3 id="order-question"></h3>
+      <p class="hint">💡 Utilise les flèches pour remettre les éléments dans le bon ordre :</p>
+      
+      <ul id="order-list" class="sortable-list"></ul>
+
+      <button onclick="submitOrder()" class="btn-primary">Valider la séquence</button>
+    </div>
+
+    <!-- Écran MÉTHODE DE RÉPONSE (Saisie libre avec IA) -->
+    <div id="screen-method" class="card hidden">
+      <span class="badge badge-method">Réponse Rédigée</span>
+      <h3 id="method-question"></h3>
+      
+      <div class="ai-suggestion" id="method-hint">
+        <!-- Rempli par le script -->
+      </div>
+
+      <textarea id="method-input" rows="5" placeholder="Saisissez votre réponse ici..."></textarea>
+      <button onclick="submitMethod()" class="btn-primary">Valider et faire corriger</button>
+    </div>
+
+    <!-- Écran CORRECTION / RÉSULTAT IA -->
+    <div id="screen-result" class="card hidden">
+      <h2>Correction & Analyse IA</h2>
+      <div id="result-status"></div>
+      
+      <div class="result-box">
+        <h4>Correction officielle :</h4>
+        <p id="result-expected"></p>
+      </div>
+
+      <div class="result-box explanation">
+        <h4>Explication / Analyse :</h4>
+        <p id="result-explanation"></p>
+      </div>
+
+      <button onclick="nextQuestion()" class="btn-secondary">Question suivante ➔</button>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
