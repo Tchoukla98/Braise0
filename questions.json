@@ -1,17 +1,17 @@
 [
   {
     "id": 1,
-    "type": "methode",
-    "categorie": "Incendie",
-    "question": "Que requiert la discipline de la part de l'exécutant ?",
-    "methode_suggestion": "Indique les deux volets : l'obéissance aux ordres ET la recherche de la perfection dans l'exécution.",
-    "reponse_attendue": "La stricte observation des ordres reçus / la recherche à son niveau du résultat escompté et de l'exécution parfaite de tous les actes y concourant."
+    "type": "vrai_faux",
+    "categorie": "GAZ",
+    "question": "Il est autorisé de manœuvrer un barrage de gaz où l'indication 'Réseau' apparaît.",
+    "reponse_correcte": false,
+    "explication": "Il est strictement interdit de manœuvrer un barrage où la mention 'réseau' apparaît."
   },
   {
     "id": 2,
     "type": "ordonnance",
-    "categorie": "Maniement des lances / MGO",
-    "question": "Remettez dans l'ordre les 8 étapes de la Marche Générale des Opérations (MGO) :",
+    "categorie": "MGO",
+    "question": "Remettez dans l'ordre chronologique la marche générale des opérations (MGO) :",
     "elements_a_ordonner": [
       "Les reconnaissances",
       "Les sauvetages",
@@ -25,10 +25,11 @@
   },
   {
     "id": 3,
-    "type": "vrai_faux",
-    "categorie": "Gaz",
-    "question": "Il est autorisé d'ouvrir à nouveau un barrage général de GAZ une fois coupé.",
-    "reponse_correcte": false,
-    "explication": "Il est strictement interdit d'ouvrir à nouveau un barrage général."
+    "type": "methode",
+    "categorie": "Incendie",
+    "question": "Comment opérer sur un feu en espace clos ou semi-clos ?",
+    "methode_suggestion": "💡 **Méthode suggérée** : Répondez sous forme de réflexes de sécurité (position, chemin de repli, réglage de lance).",
+    "reponse_attendue": "Se placer en position basse côté ouvrant, prévoir un chemin de repli, estimer la chaleur (portes/poignées), chercher les signes thermiques, rendre compte au chef d'agrès, régler la lance en jet diffusé d'attaque (500 L/min) et ouvrir prudemment.",
+    "explication_ia": "Analyse de l'IA : Assurez-vous d'avoir mentionné la position basse, le débit de 500 l/min et le compte rendu immédiat."
   }
 ]
