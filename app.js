@@ -1,6 +1,7 @@
 let questionsList = [];
 let currentQuestion = null;
 
+// Gestion de la clé API Groq
 function getApiKey() {
   let key = localStorage.getItem("groq_api_key");
   if (!key) {
@@ -13,11 +14,13 @@ function getApiKey() {
   return key;
 }
 
+// Réinitialiser la clé API
 function resetApiKey() {
   localStorage.removeItem("groq_api_key");
-  alert("🔑 La clé API a été effacée !");
+  alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
 }
 
+// Nettoyage JSON des réponses de l'IA
 function cleanAndParseJSON(rawContent) {
   let cleaned = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
@@ -27,97 +30,59 @@ function cleanAndParseJSON(rawContent) {
 
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
-  const firstBracket = cleaned.indexOf("[");
-  const lastBracket = cleaned.lastIndexOf("]");
 
-  // Si c'est un tableau JSON
-  if (firstBracket !== -1 && lastBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
-    return JSON.parse(cleaned.substring(firstBracket, lastBracket + 1));
-  }
-
-  // Si c'est un objet JSON
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    return JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
 
   return JSON.parse(cleaned);
 }
 
-// L'IA lit le fichier .txt et extrait dynamiquement toutes les paires question/réponse
-async function loadQuestionsWithIA() {
-  const apiKey = getApiKey();
-  if (!apiKey) return;
-
+// Chargement hyper fiable grâce aux balises <Q> et <R>
+async function loadQuestionsFromTxt() {
   try {
-    const responseTxt = await fetch('Questionnaire-rengagement-COSS.txt');
-    if (!responseTxt.ok) throw new Error(`HTTP ${responseTxt.status}`);
-    const textContent = await responseTxt.text();
+    const response = await fetch('Questionnaire-rengagement-COSS.txt');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
 
-    const promptSystem = `Tu es un parseur de document officiel pour pompiers.
-Analyse le document fourni et extrait TOUTES les questions (ou consignes "Citez...", "Définition...") avec leurs réponses officielles associées.
-Conserve le texte MOT À MOT.
+    const regex = /<Q>([\s\S]*?)<\/Q>[\s\n\r]*<R>([\s\S]*?)<\/R>/g;
+    let match;
+    let tempQuestions = [];
 
-Réponds STRICTEMENT sous forme d'un tableau JSON d'objets :
-[
-  {
-    "type": "methode",
-    "question": "Question ou consigne exacte du document",
-    "reponse_attendue": "Réponse officielle mot à mot"
-  }
-]
+    while ((match = regex.exec(text)) !== null) {
+      const questionText = match[1].replace(/[\r\n]+/g, " ").trim();
+      const answerText = match[2].replace(/[\r\n]+/g, " ").trim();
 
-Document :
-${textContent}`;
-
-    const response = await fetch("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-20b",
-        messages: [{ role: "user", content: promptSystem }],
-        temperature: 0.1
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Erreur API (${response.status}) : ${errText.substring(0, 100)}`);
+      if (questionText && answerText) {
+        tempQuestions.push({
+          type: "methode",
+          question: questionText,
+          reponse_attendue: answerText,
+          methode_suggestion: "💡 **Méthode** : Répondez précisément avec les termes officiels du référentiel."
+        });
+      }
     }
 
-    const data = await response.json();
-    const rawContent = data.choices[0].message.content;
-    questionsList = cleanAndParseJSON(rawContent);
-
-    console.log(`${questionsList.length} questions analysées et chargées par l'IA !`);
-
+    if (tempQuestions.length > 0) {
+      questionsList = tempQuestions;
+      console.log(`${questionsList.length} questions chargées avec succès !`);
+    }
   } catch (error) {
-    console.error("Erreur de parsing par l'IA :", error);
+    console.error("Erreur de chargement du fichier texte:", error);
   }
 }
 
-// Initialisation au chargement
-loadQuestionsWithIA();
+// Initialisation au chargement de la page
+loadQuestionsFromTxt();
 
 // Tirage aléatoire instantané
 async function startSession() {
   if (questionsList.length === 0) {
-    showResult(
-      "⏳ Chargement du référentiel...",
-      "L'IA analyse le fichier Questionnaire-rengagement-COSS.txt...",
-      "Veuillez patienter quelques secondes."
-    );
-    await loadQuestionsWithIA();
+    await loadQuestionsFromTxt();
   }
 
   if (questionsList.length === 0) {
-    showResult(
-      "❌ Erreur de chargement",
-      "Impossible d'analyser le fichier avec l'IA.",
-      "Vérifiez votre clé API Groq ou rafraîchissez la page."
-    );
+    alert("Chargement du questionnaire en cours ou fichier inaccessible...");
     return;
   }
 
@@ -126,7 +91,7 @@ async function startSession() {
 
   hideAllScreens();
   document.getElementById("method-question").innerText = currentQuestion.question;
-  document.getElementById("method-hint").innerHTML = "💡 Répondez précisément avec les termes officiels du référentiel.";
+  document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion;
   document.getElementById("method-input").value = "";
   document.getElementById("screen-method").classList.remove("hidden");
 }
@@ -139,7 +104,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// Évaluation dynamique de la réponse par openai/gpt-oss-20b
+// Évaluation dynamique avec le modèle openai/gpt-oss-20b
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -228,6 +193,7 @@ Format JSON attendu :
   }
 }
 
+// Affichage des résultats
 function showResult(statusHtml, expectedText, explanationText) {
   hideAllScreens();
   document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
