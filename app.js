@@ -107,7 +107,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// Évaluation dynamique avec tolérance explicite sur le vocabulaire opérationnel
+// Évaluation dynamique avec inversion des encarts et tolérance grammaticale
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -133,6 +133,7 @@ Compare la réponse du candidat à la réponse officielle du référentiel.
 
 DIRECTIVES D'ÉVALUATION :
 1. VALIDE LES ÉQUIVALENCES CONCEPTUELLES ET DE TERRAIN :
+   - "elle-même" = "d'elle-même" (VALIDE, ne sanctionne PAS les légères différences de préposition ou d'apostrophe "d' / de / à").
    - "sur le palier" = "à l'étage" (VALIDE)
    - "chaussée" ou "voie publique" = "trottoir" (VALIDE)
    - "en bas de la cage d'escalier" ou "pied de conduite" = "pied de conduite montante" (VALIDE)
@@ -199,16 +200,22 @@ Format JSON attendu :
     }
 
     const statusHtml = `${badge} Résultat : ${statutTxt} (${calculatedScore}/100)`;
-    const expectedText = `💡 **Analyse de votre réponse** :\n${resultIA.commentaire}`;
     
+    // Encart 1 (Analyse / Explication) : placé en premier, avec votre réponse saisie tout en haut
     const explanationText = `
+✍️ **Votre réponse** : ${userText}
+
 ✔ **Points retrouvés** : ${retrouvees.join(", ") || "Aucun"}
 ✖ **Points oubliés** : ${manquees.join(", ") || "Aucun"}
 
 📖 **Réponse officielle** : ${currentQuestion.reponse_attendue}
     `;
 
-    showResult(statusHtml, expectedText, explanationText);
+    // Encart 2 (Correction officielle / Commentaire détaillé de l'IA) : placé en second
+    const expectedText = `💡 **Commentaire détaillé de l'IA** :\n${resultIA.commentaire}`;
+
+    // Passage des arguments inversé : Encart Explication au-dessus de l'Analyse officielle
+    showResult(statusHtml, explanationText, expectedText);
 
   } catch (error) {
     console.error("Erreur lors de l'analyse :", error);
