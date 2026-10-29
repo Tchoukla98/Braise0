@@ -1,3 +1,4 @@
+let questionsList = [];
 let currentQuestion = null;
 
 // Gestion de la clé API Groq
@@ -19,7 +20,7 @@ function resetApiKey() {
   alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
 }
 
-// Nettoyage sécurisé du JSON renvoyé par l'IA
+// Nettoyage sécurisé du JSON
 function cleanAndParseJSON(rawContent) {
   let cleaned = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
@@ -37,89 +38,78 @@ function cleanAndParseJSON(rawContent) {
   return JSON.parse(cleaned);
 }
 
-// Tirage dynamique depuis le fichier texte
-async function startSession() {
-  const apiKey = getApiKey();
-  if (!apiKey) return;
-
-  hideAllScreens();
-  showResult(
-    "⏳ Consultation du référentiel...",
-    "L'IA extrait une question officielle mot à mot depuis Questionnaire-rengagement-COSS.txt...",
-    "Veuillez patienter quelques secondes."
-  );
-
+// Chargement et découpage local du fichier texte
+async function loadQuestionsFromTxt() {
   try {
-    const responseTxt = await fetch('Questionnaire-rengagement-COSS.txt');
-    if (!responseTxt.ok) {
-      throw new Error(`Impossible de charger le fichier texte (HTTP ${responseTxt.status})`);
+    const response = await fetch('Questionnaire-rengagement-COSS.txt');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
+
+    // Analyse du fichier texte (sépare par blocs de questions/réponses)
+    const blocks = text.split(/\n\s*\n/);
+    let tempQuestions = [];
+
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i].trim();
+      if (!block) continue;
+
+      const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length >= 2) {
+        const questionText = lines[0];
+        const answerText = lines.slice(1).join(" ");
+
+        tempQuestions.push({
+          type: "methode",
+          question: questionText,
+          reponse_attendue: answerText,
+          methode_suggestion: "💡 **Méthode** : Répondez précisément avec les termes officiels du référentiel."
+        });
+      }
     }
-    const textContent = await responseTxt.text();
 
-    const promptSystem = `Tu es un système d'extraction pour le concours pompier.
-À partir du texte officiel ci-dessous, sélectionne UNE question au hasard.
-Tu dois reprendre la question ET la réponse attendue STRICTEMENT MOT À MOT du document.
-
-Réponds STRICTEMENT sous la forme d'un objet JSON brut. Ne mets aucun texte, aucune explication, ni balise markdown autour.
-
-Format JSON :
-{
-  "type": "methode",
-  "question": "Texte exact de la question du document",
-  "reponse_attendue": "Texte exact de la réponse officielle du document",
-  "methode_suggestion": "💡 **Méthode** : Répondez précisément avec les termes officiels."
+    if (tempQuestions.length > 0) {
+      questionsList = tempQuestions;
+      console.log(`${questionsList.length} questions chargées avec succès !`);
+    }
+  } catch (error) {
+    console.error("Erreur de chargement du fichier texte:", error);
+  }
 }
 
-Texte du référentiel :
-${textContent}`;
+// Initialisation au chargement de la page
+loadQuestionsFromTxt();
 
-    const response = await fetch("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-20b",
-        messages: [{ role: "user", content: promptSystem }],
-        temperature: 0.7
-      })
-    });
+// Tirage aléatoire local instantané
+async function startSession() {
+  if (questionsList.length === 0) {
+    await loadQuestionsFromTxt();
+  }
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Erreur API Groq (${response.status}) : ${errText.substring(0, 100)}`);
-    }
+  if (questionsList.length === 0) {
+    alert("Chargement du questionnaire en cours ou fichier inaccessible...");
+    return;
+  }
 
-    const data = await response.json();
-    const rawContent = data.choices[0].message.content;
-    currentQuestion = cleanAndParseJSON(rawContent);
+  const randomIndex = Math.floor(Math.random() * questionsList.length);
+  currentQuestion = questionsList[randomIndex];
 
-    hideAllScreens();
-    if (currentQuestion.type === "vrai_faux") {
-      document.getElementById("vf-question").innerText = currentQuestion.question;
-      document.getElementById("screen-vf").classList.remove("hidden");
-    } 
-    else if (currentQuestion.type === "ordonnance") {
-      document.getElementById("order-question").innerText = currentQuestion.question;
-      currentQuestion.itemsShuffled = [...currentQuestion.elements_a_ordonner].sort(() => Math.random() - 0.5);
-      renderOrderList(currentQuestion.itemsShuffled);
-      document.getElementById("screen-order").classList.remove("hidden");
-    } 
-    else {
-      document.getElementById("method-question").innerText = currentQuestion.question;
-      document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion || "💡 Lisez attentivement la question.";
-      document.getElementById("method-input").value = "";
-      document.getElementById("screen-method").classList.remove("hidden");
-    }
-
-  } catch (error) {
-    console.error(error);
-    showResult(
-      "❌ Erreur lors du tirage",
-      `Détail : ${error.message}`,
-      "Vérifiez le fichier texte ou votre clé API."
-    );
+  hideAllScreens();
+  
+  if (currentQuestion.type === "vrai_faux") {
+    document.getElementById("vf-question").innerText = currentQuestion.question;
+    document.getElementById("screen-vf").classList.remove("hidden");
+  } 
+  else if (currentQuestion.type === "ordonnance") {
+    document.getElementById("order-question").innerText = currentQuestion.question;
+    currentQuestion.itemsShuffled = [...currentQuestion.elements_a_ordonner].sort(() => Math.random() - 0.5);
+    renderOrderList(currentQuestion.itemsShuffled);
+    document.getElementById("screen-order").classList.remove("hidden");
+  } 
+  else {
+    document.getElementById("method-question").innerText = currentQuestion.question;
+    document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion || "💡 Lisez attentivement la question.";
+    document.getElementById("method-input").value = "";
+    document.getElementById("screen-method").classList.remove("hidden");
   }
 }
 
@@ -178,7 +168,7 @@ function submitOrder() {
   );
 }
 
-// 3. Évaluation dynamique avec encodage sécurisé des textes
+// 3. Évaluation dynamique avec openai/gpt-oss-20b
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -195,7 +185,6 @@ async function submitMethod() {
     "Vérification des notions clés et des synonymes..."
   );
 
-  // Sécurisation complète contre les caractères spéciaux / guillemets
   const safeQuestion = JSON.stringify(currentQuestion.question || "");
   const safeOfficial = JSON.stringify(currentQuestion.reponse_attendue || "");
   const safeUserText = JSON.stringify(userText);
@@ -235,7 +224,7 @@ Format JSON attendu :
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Code HTTP ${response.status} - Réponse : ${errText.substring(0, 150)}`);
+      throw new Error(`HTTP ${response.status} : ${errText.substring(0, 100)}`);
     }
 
     const data = await response.json();
@@ -243,4 +232,40 @@ Format JSON attendu :
     const resultIA = cleanAndParseJSON(rawContent);
 
     let badge = "✅";
-    if (resultIA.
+    if (resultIA.statut === "PARTIEL") badge = "⚠️";
+    if (resultIA.statut === "INCORRECT") badge = "❌";
+
+    const statusHtml = `${badge} Résultat : ${resultIA.statut} (${resultIA.score}/100)`;
+    const expectedText = `💡 **Analyse de votre réponse** :\n${resultIA.commentaire}`;
+    
+    const explanationText = `
+✔ **Points retrouvés** : ${(resultIA.notions_presentes || []).join(", ") || "Aucun"}
+✖ **Points oubliés** : ${(resultIA.notions_manquantes || []).join(", ") || "Aucun"}
+
+📖 **Réponse officielle** : ${currentQuestion.reponse_attendue}
+    `;
+
+    showResult(statusHtml, expectedText, explanationText);
+
+  } catch (error) {
+    console.error("Erreur lors de l'analyse :", error);
+    showResult(
+      "❌ Erreur lors de l'analyse",
+      `Détail technique : ${error.message}`,
+      "Réessayez ou vérifiez votre saisie."
+    );
+  }
+}
+
+// Affichage des résultats
+function showResult(statusHtml, expectedText, explanationText) {
+  hideAllScreens();
+  document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
+  document.getElementById("result-expected").innerText = expectedText;
+  document.getElementById("result-explanation").innerText = explanationText;
+  document.getElementById("screen-result").classList.remove("hidden");
+}
+
+function nextQuestion() {
+  startSession();
+}
