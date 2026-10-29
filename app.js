@@ -19,17 +19,14 @@ function resetApiKey() {
   alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
 }
 
-// Fonction de nettoyage pour extraire le JSON d'une réponse IA
+// Fonction universelle pour extraire le JSON d'une réponse texte
 function cleanAndParseJSON(rawContent) {
-  // 1. Supprimer les balises de réflexion style <think>...</think>
   let cleaned = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
-  // 2. Supprimer le formatage Markdown ```json ... ```
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
   }
 
-  // 3. Extraire le premier objet JSON valide entre { et }
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
 
@@ -59,19 +56,21 @@ async function startSession() {
     }
     const textContent = await responseTxt.text();
 
-    const promptSystem = `Tu es un système strict qui extrait des questions pour un concours de sapeurs-pompiers.
-À partir du texte du référentiel fourni, sélectionne UNE question au hasard.
+    const promptSystem = `Tu es un système d'extraction pour le concours pompier.
+À partir du texte officiel ci-dessous, sélectionne UNE question au hasard.
 Tu dois reprendre la question ET la réponse attendue STRICTEMENT MOT À MOT du document.
 
-Tu dois répondre UNIQUEMENT par un objet JSON valide avec la structure suivante :
+Réponds STRICTEMENT sous la forme d'un objet JSON brut. Ne mets aucun texte, aucune explication, ni balise markdown autour.
+
+Format JSON :
 {
   "type": "methode",
-  "question": "Texte exact de la question",
-  "reponse_attendue": "Texte exact de la réponse officielle",
+  "question": "Texte exact de la question du document",
+  "reponse_attendue": "Texte exact de la réponse officielle du document",
   "methode_suggestion": "💡 **Méthode** : Répondez précisément avec les termes officiels."
 }
 
-Texte source du référentiel :
+Texte du référentiel :
 ${textContent}`;
 
     const response = await fetch("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", {
@@ -83,19 +82,16 @@ ${textContent}`;
       body: JSON.stringify({
         model: "openai/gpt-oss-20b",
         messages: [{ role: "user", content: promptSystem }],
-        temperature: 0.7,
-        response_format: { type: "json_object" }
+        temperature: 0.7
       })
     });
 
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
-      const errDetails = data.error ? data.error.message : `Code HTTP ${response.status}`;
-      showResult("❌ Erreur Groq", `Erreur : ${errDetails}`, "Vérifiez votre clé API.");
-      return;
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Erreur API Groq (HTTP ${response.status}) : ${errText.substring(0, 150)}`);
     }
 
+    const data = await response.json();
     const rawContent = data.choices[0].message.content;
     currentQuestion = cleanAndParseJSON(rawContent);
 
@@ -122,7 +118,7 @@ ${textContent}`;
     showResult(
       "❌ Erreur lors du tirage",
       `Détail : ${error.message}`,
-      "Assurez-vous que le fichier 'Questionnaire-rengagement-COSS.txt' est bien présent à la racine de votre dépôt GitHub."
+      "Vérifiez le fichier texte ou votre clé API."
     );
   }
 }
@@ -207,7 +203,9 @@ Question : ${currentQuestion.question}
 Réponse officielle : ${currentQuestion.reponse_attendue}
 Réponse saisie par le candidat : ${userText}
 
-Tu dois répondre UNIQUEMENT par un objet JSON valide suivant ce format exact :
+Réponds STRICTEMENT sous la forme d'un objet JSON brut. Ne mets aucun texte, aucune explication, ni balise markdown autour.
+
+Format JSON :
 {
   "statut": "VALIDE",
   "score": 85,
@@ -226,19 +224,16 @@ Tu dois répondre UNIQUEMENT par un objet JSON valide suivant ce format exact :
       body: JSON.stringify({
         model: "openai/gpt-oss-20b",
         messages: [{ role: "user", content: promptEvaluation }],
-        temperature: 0.1,
-        response_format: { type: "json_object" }
+        temperature: 0.1
       })
     });
 
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
-      const errDetails = data.error ? data.error.message : `Code HTTP ${response.status}`;
-      showResult("❌ Erreur Groq", `Erreur API : ${errDetails}`, "Vérifiez votre clé API.");
-      return;
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Erreur API Groq (HTTP ${response.status}) : ${errText.substring(0, 150)}`);
     }
 
+    const data = await response.json();
     const rawContent = data.choices[0].message.content;
     const resultIA = cleanAndParseJSON(rawContent);
 
