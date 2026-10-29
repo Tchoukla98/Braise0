@@ -1,36 +1,4 @@
-// Questions par défaut au cas où le JSON ne charge pas immédiatement
-let questionsBase = [
-  {
-    "id": 1,
-    "type": "vrai_faux",
-    "categorie": "GAZ",
-    "question": "Il est autorisé de manœuvrer un barrage de gaz où l'indication 'Réseau' apparaît.",
-    "reponse_correcte": false,
-    "explication": "Il est strictement interdit de manœuvrer un barrage où la mention 'réseau' apparaît."
-  },
-  {
-    "id": 2,
-    "type": "methode",
-    "categorie": "Incendie",
-    "question": "Comment opérer sur un feu en espace clos ou semi-clos ?",
-    "methode_suggestion": "💡 **Méthode suggérée** : Répondez sous forme de réflexes de sécurité (position, chemin de repli, réglage de lance).",
-    "reponse_attendue": "Se placer en position basse côté ouvrant, prévoir un chemin de repli, estimer la chaleur (portes/poignées), chercher les signes thermiques, rendre compte au chef d'agrès, régler la lance en jet diffusé d'attaque (500 L/min) et ouvrir prudemment.",
-    "explication_ia": "Analyse de l'IA : Assurez-vous d'avoir mentionné la position basse, le débit de 500 l/min et le compte rendu immédiat."
-  }
-];
-
 let currentQuestion = null;
-
-// Chargement dynamique depuis questions.json
-fetch('questions.json')
-  .then(response => response.json())
-  .then(data => {
-    if (Array.isArray(data) && data.length > 0) {
-      questionsBase = data;
-      console.log("Questions JSON chargées avec succès !");
-    }
-  })
-  .catch(error => console.warn("Fichier questions.json non trouvé, utilisation de la base par défaut.", error));
 
 // Gestion de la clé API Groq
 function getApiKey() {
@@ -45,39 +13,118 @@ function getApiKey() {
   return key;
 }
 
-// Fonction pour réinitialiser la clé API
+// Réinitialiser la clé API depuis un bouton
 function resetApiKey() {
   localStorage.removeItem("groq_api_key");
-  alert("🔑 La clé API a été effacée. Une nouvelle clé vous sera demandée lors du prochain test.");
+  alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
 }
 
-// Lancer une session aléatoire
-function startSession() {
-  if (questionsBase.length === 0) {
-    alert("Les questions sont en cours de chargement...");
-    return;
-  }
+// Fonction de tirage dynamique : lit le fichier .txt et extrait une question MOT À MOT via l'IA
+async function startSession() {
+  const apiKey = getApiKey();
+  if (!apiKey) return;
 
-  const randomIndex = Math.floor(Math.random() * questionsBase.length);
-  currentQuestion = questionsBase[randomIndex];
-  
   hideAllScreens();
+  showResult(
+    "⏳ Consultation du référentiel...",
+    "L'IA extrait une question officielle mot à mot depuis Questionnaire-rengagement-COSS.txt...",
+    "Veuillez patienter quelques secondes."
+  );
 
-  if (currentQuestion.type === "vrai_faux") {
-    document.getElementById("vf-question").innerText = currentQuestion.question;
-    document.getElementById("screen-vf").classList.remove("hidden");
-  } 
-  else if (currentQuestion.type === "ordonnance") {
-    document.getElementById("order-question").innerText = currentQuestion.question;
-    currentQuestion.itemsShuffled = [...currentQuestion.elements_a_ordonner].sort(() => Math.random() - 0.5);
-    renderOrderList(currentQuestion.itemsShuffled);
-    document.getElementById("screen-order").classList.remove("hidden");
-  } 
-  else if (currentQuestion.type === "methode") {
-    document.getElementById("method-question").innerText = currentQuestion.question;
-    document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion || "💡 Lisez attentivement la question.";
-    document.getElementById("method-input").value = "";
-    document.getElementById("screen-method").classList.remove("hidden");
+  try {
+    // Read the text file directly from GitHub root
+    const responseTxt = await fetch('Questionnaire-rengagement-COSS.txt');
+    if (!responseTxt.ok) {
+      throw new Error(`Impossible de charger le fichier texte (HTTP ${responseTxt.status})`);
+    }
+    const textContent = await responseTxt.text();
+
+    const promptSystem = `Tu es un extraitur de questions pour un concours de sapeurs-pompiers.
+À partir du texte du référentiel fourni ci-dessous, sélectionne UNE question de manière complètement ALEATOIRE.
+Tu dois reprendre la question ET la réponse attendue STRICTEMENT MOT À MOT, à l'identique du document, sans modifier une seule virgule ni inventer du texte.
+
+Réponds STRICTEMENT sous forme d'un objet JSON valide au format suivant (sans texte ni balises autour) :
+
+Si c'est une question rédigée / méthode :
+{
+  "type": "methode",
+  "question": "Texte exact de la question du document",
+  "reponse_attendue": "Texte exact de la réponse officielle du document",
+  "methode_suggestion": "💡 **Méthode** : Répondez précisément avec les termes officiels."
+}
+
+Si la question demande de remettre dans l'ordre des éléments (ex: MGO ou SECURITE) :
+{
+  "type": "ordonnance",
+  "question": "Texte exact de la question",
+  "elements_a_ordonner": ["Étape 1", "Étape 2", "Étape 3"]
+}
+
+Si c'est une affirmation Vrai / Faux :
+{
+  "type": "vrai_faux",
+  "question": "Texte exact de l'affirmation",
+  "reponse_correcte": false,
+  "explication": "Explication exacte tirée du document"
+}
+
+Texte source du référentiel :
+${textContent}`;
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-oss-20b",
+        messages: [{ role: "user", content: promptSystem }],
+        temperature: 0.8
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      const errDetails = data.error ? data.error.message : `Code HTTP ${response.status}`;
+      showResult("❌ Erreur Groq", `Erreur : ${errDetails}`, "Vérifiez votre clé API.");
+      return;
+    }
+
+    let content = data.choices[0].message.content.trim();
+    if (content.startsWith("```json")) {
+      content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    }
+
+    currentQuestion = JSON.parse(content);
+
+    // Affichage dynamique de la question extraite
+    hideAllScreens();
+    if (currentQuestion.type === "vrai_faux") {
+      document.getElementById("vf-question").innerText = currentQuestion.question;
+      document.getElementById("screen-vf").classList.remove("hidden");
+    } 
+    else if (currentQuestion.type === "ordonnance") {
+      document.getElementById("order-question").innerText = currentQuestion.question;
+      currentQuestion.itemsShuffled = [...currentQuestion.elements_a_ordonner].sort(() => Math.random() - 0.5);
+      renderOrderList(currentQuestion.itemsShuffled);
+      document.getElementById("screen-order").classList.remove("hidden");
+    } 
+    else if (currentQuestion.type === "methode") {
+      document.getElementById("method-question").innerText = currentQuestion.question;
+      document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion || "💡 Lisez attentivement la question.";
+      document.getElementById("method-input").value = "";
+      document.getElementById("screen-method").classList.remove("hidden");
+    }
+
+  } catch (error) {
+    console.error(error);
+    showResult(
+      "❌ Erreur lors du tirage",
+      `Détail : ${error.message}`,
+      "Assurez-vous que le fichier 'Questionnaire-rengagement-COSS.txt' est bien présent à la racine de votre dépôt GitHub."
+    );
   }
 }
 
@@ -89,7 +136,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// 1. Soumission Vrai / Faux
+// 1. Validation Vrai / Faux
 function submitVF(userChoice) {
   const isCorrect = userChoice === currentQuestion.reponse_correcte;
   showResult(
@@ -99,7 +146,7 @@ function submitVF(userChoice) {
   );
 }
 
-// 2. Soumission Ordonnance
+// 2. Validation Ordonnance
 function renderOrderList(items) {
   const listEl = document.getElementById("order-list");
   listEl.innerHTML = "";
@@ -136,7 +183,7 @@ function submitOrder() {
   );
 }
 
-// 3. Soumission Rédaction avec modèle Groq corrigé
+// 3. Evaluation dynamique de la réponse rédigée par le modèle openai/gpt-oss-20b
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -144,32 +191,24 @@ async function submitMethod() {
     return;
   }
 
-  let apiKey = getApiKey();
-  if (apiKey) {
-    apiKey = apiKey.trim();
-    localStorage.setItem("groq_api_key", apiKey);
-  }
-
-  if (!apiKey) {
-    alert("Clé API requise pour utiliser la correction par l'IA.");
-    return;
-  }
+  const apiKey = getApiKey();
+  if (!apiKey) return;
 
   showResult(
-    "⏳ Analyse IA en cours...",
-    "Évaluation de votre réponse par l'IA...",
+    "⏳ Correction par l'IA...",
+    "Analyse de votre saisie par le modèle openai/gpt-oss-20b...",
     "Vérification des notions clés et des synonymes..."
   );
 
-  const promptSystem = `Tu es un instructeur pompier évaluant un candidat.
+  const promptEvaluation = `Tu es un instructeur pompier évaluand un candidat.
 Compare la réponse du candidat à la réponse officielle du référentiel.
 Sois souple sur la formulation : si le candidat utilise des synonymes ou des reformulations qui traduisent la bonne idée, valide la notion.
 
 Question : ${currentQuestion.question}
 Réponse officielle : ${currentQuestion.reponse_attendue}
-Réponse du candidat : ${userText}
+Réponse saisie par le candidat : ${userText}
 
-Réponds STRICTEMENT sous forme d'objet JSON valide avec cette structure (sans texte autour) :
+Réponds STRICTEMENT sous forme d'un objet JSON valide avec cette structure (sans aucun texte autour) :
 {
   "statut": "VALIDE" ou "PARTIEL" ou "INCORRECT",
   "score": 85,
@@ -179,7 +218,7 @@ Réponds STRICTEMENT sous forme d'objet JSON valide avec cette structure (sans t
 }`;
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await fetch("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -187,27 +226,12 @@ Réponds STRICTEMENT sous forme d'objet JSON valide avec cette structure (sans t
       },
       body: JSON.stringify({
         model: "openai/gpt-oss-20b",
-        messages: [{ role: "user", content: promptSystem }],
+        messages: [{ role: "user", content: promptEvaluation }],
         temperature: 0.1
       })
     });
 
     const data = await response.json();
-
-    if (!response.ok || data.error) {
-      const errDetails = data.error ? data.error.message : `Code HTTP ${response.status}`;
-      const keyPreview = apiKey.length > 8 
-        ? `${apiKey.substring(0, 6)}...${apiKey.substring(apiKey.length - 4)}` 
-        : apiKey;
-
-      showResult(
-        "❌ Erreur de connexion Groq",
-        `Détail de l'erreur : ${errDetails}`,
-        `🔑 Clé utilisée : "${keyPreview}" (Longueur : ${apiKey.length} car.)`
-      );
-      return;
-    }
-
     let content = data.choices[0].message.content.trim();
     if (content.startsWith("```json")) {
       content = content.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -233,14 +257,10 @@ Réponds STRICTEMENT sous forme d'objet JSON valide avec cette structure (sans t
 
   } catch (error) {
     console.error(error);
-    const keyPreview = apiKey.length > 8 
-      ? `${apiKey.substring(0, 6)}...${apiKey.substring(apiKey.length - 4)}` 
-      : apiKey;
-
     showResult(
       "❌ Erreur lors de l'analyse",
       `Message technique : ${error.message}`,
-      `🔑 Clé actuellement enregistrée : "${keyPreview}" (Longueur : ${apiKey.length})`
+      "Réessayez ou vérifiez votre connexion."
     );
   }
 }
