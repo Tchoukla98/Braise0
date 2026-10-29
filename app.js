@@ -19,7 +19,7 @@ function resetApiKey() {
   alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
 }
 
-// Fonction universelle pour extraire le JSON d'une réponse texte
+// Nettoyage sécurisé du JSON renvoyé par l'IA
 function cleanAndParseJSON(rawContent) {
   let cleaned = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
@@ -88,7 +88,7 @@ ${textContent}`;
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Erreur API Groq (HTTP ${response.status}) : ${errText.substring(0, 150)}`);
+      throw new Error(`Erreur API Groq (${response.status}) : ${errText.substring(0, 100)}`);
     }
 
     const data = await response.json();
@@ -178,7 +178,7 @@ function submitOrder() {
   );
 }
 
-// 3. Évaluation dynamique de la réponse rédigée
+// 3. Évaluation dynamique avec encodage sécurisé des textes
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -195,17 +195,22 @@ async function submitMethod() {
     "Vérification des notions clés et des synonymes..."
   );
 
+  // Sécurisation complète contre les caractères spéciaux / guillemets
+  const safeQuestion = JSON.stringify(currentQuestion.question || "");
+  const safeOfficial = JSON.stringify(currentQuestion.reponse_attendue || "");
+  const safeUserText = JSON.stringify(userText);
+
   const promptEvaluation = `Tu es un instructeur pompier évaluant un candidat.
 Compare la réponse du candidat à la réponse officielle du référentiel.
 Sois souple sur la formulation : si le candidat utilise des synonymes ou des reformulations qui traduisent la bonne idée, valide la notion.
 
-Question : ${currentQuestion.question}
-Réponse officielle : ${currentQuestion.reponse_attendue}
-Réponse saisie par le candidat : ${userText}
+Question : ${safeQuestion}
+Réponse officielle : ${safeOfficial}
+Réponse saisie par le candidat : ${safeUserText}
 
-Réponds STRICTEMENT sous la forme d'un objet JSON brut. Ne mets aucun texte, aucune explication, ni balise markdown autour.
+Réponds STRICTEMENT sous la forme d'un objet JSON brut (sans texte ni markdown).
 
-Format JSON :
+Format JSON attendu :
 {
   "statut": "VALIDE",
   "score": 85,
@@ -230,7 +235,7 @@ Format JSON :
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Erreur API Groq (HTTP ${response.status}) : ${errText.substring(0, 150)}`);
+      throw new Error(`Code HTTP ${response.status} - Réponse : ${errText.substring(0, 150)}`);
     }
 
     const data = await response.json();
@@ -238,40 +243,4 @@ Format JSON :
     const resultIA = cleanAndParseJSON(rawContent);
 
     let badge = "✅";
-    if (resultIA.statut === "PARTIEL") badge = "⚠️";
-    if (resultIA.statut === "INCORRECT") badge = "❌";
-
-    const statusHtml = `${badge} Résultat : ${resultIA.statut} (${resultIA.score}/100)`;
-    const expectedText = `💡 **Analyse de votre réponse** :\n${resultIA.commentaire}`;
-    
-    const explanationText = `
-✔ **Points retrouvés** : ${(resultIA.notions_presentes || []).join(", ") || "Aucun"}
-✖ **Points oubliés** : ${(resultIA.notions_manquantes || []).join(", ") || "Aucun"}
-
-📖 **Réponse officielle** : ${currentQuestion.reponse_attendue}
-    `;
-
-    showResult(statusHtml, expectedText, explanationText);
-
-  } catch (error) {
-    console.error("Erreur lors de l'analyse :", error);
-    showResult(
-      "❌ Erreur lors de l'analyse",
-      `Détail technique : ${error.message}`,
-      "Réessayez ou vérifiez votre saisie."
-    );
-  }
-}
-
-// Affichage des résultats
-function showResult(statusHtml, expectedText, explanationText) {
-  hideAllScreens();
-  document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
-  document.getElementById("result-expected").innerText = expectedText;
-  document.getElementById("result-explanation").innerText = explanationText;
-  document.getElementById("screen-result").classList.remove("hidden");
-}
-
-function nextQuestion() {
-  startSession();
-}
+    if (resultIA.
