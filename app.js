@@ -1,7 +1,6 @@
 let questionsList = [];
 let currentQuestion = null;
 
-// Endpoint officiel de l'API Groq
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // Gestion de la clé API Groq
@@ -107,7 +106,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// Évaluation dynamique via l'API Groq (openai/gpt-oss-20b)
+// Évaluation dynamique avec calcul mathématique du score et tolérance accrue
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -128,11 +127,15 @@ async function submitMethod() {
   const safeOfficial = JSON.stringify(currentQuestion.reponse_attendue || "");
   const safeUserText = JSON.stringify(userText);
 
-    const promptEvaluation = `Tu es un instructeur pompier évaluant un candidat.
+  const promptEvaluation = `Tu es un instructeur pompier évaluant un candidat lors d'un examen.
 Compare la réponse du candidat à la réponse officielle du référentiel.
-Sois souple sur la formulation : si le candidat utilise des synonymes ou des reformulations qui traduisent la bonne idée, valide la notion.
 
-  
+DIRECTIVES DE CORRECTION :
+1. SOIS TRÈS SOUPLE sur la formulation et le vocabulaire :
+   - Accepte les synonymes équivalents ou appellations alternatives (ex: "jet bâton" ou "jet plein", "trottoir" ou "voie publique / chaussée", "soustraire" ou "extraire").
+   - Ne sanctionne PAS les fautes de frappe légères si l'intention technique est claire.
+2. Découpe la réponse officielle en "notions_presentes" (notions du référentiel retrouvées chez le candidat) et "notions_manquantes" (notions officiellement requises mais omises).
+
 Question : ${safeQuestion}
 Réponse officielle : ${safeOfficial}
 Réponse saisie par le candidat : ${safeUserText}
@@ -142,14 +145,12 @@ Réponds STRICTEMENT sous la forme d'un objet JSON brut.
 Format JSON attendu :
 {
   "statut": "VALIDE",
-  "score": 85,
   "notions_presentes": ["notion 1", "notion 2"],
-  "notions_manquantes": ["notion manquée"],
+  "notions_manquantes": [],
   "commentaire": "Analyse pédagogique personnalisée de la saisie."
 }`;
 
   try {
-    // Requête POST envoyée STRICTEMENT à l'API Groq
     const response = await fetch(GROQ_API_URL, {
       method: "POST",
       headers: {
@@ -172,16 +173,34 @@ Format JSON attendu :
     const rawContent = data.choices[0].message.content;
     const resultIA = cleanAndParseJSON(rawContent);
 
-    let badge = "✅";
-    if (resultIA.statut === "PARTIEL") badge = "⚠️";
-    if (resultIA.statut === "INCORRECT") badge = "❌";
+    const retrouvees = resultIA.notions_presentes || [];
+    const manquees = resultIA.notions_manquantes || [];
+    const totalNotions = retrouvees.length + manquees.length;
 
-    const statusHtml = `${badge} Résultat : ${resultIA.statut} (${resultIA.score}/100)`;
+    // Calcul du score réel au prorata
+    let calculatedScore = 100;
+    if (totalNotions > 0) {
+      calculatedScore = Math.round((retrouvees.length / totalNotions) * 100);
+    }
+
+    // Détermination dynamique du statut et de l'émoji
+    let badge = "✅";
+    let statutTxt = "VALIDE";
+
+    if (calculatedScore < 50 || resultIA.statut === "INCORRECT" || resultIA.statut === "INVALID") {
+      badge = "❌";
+      statutTxt = "INCORRECT";
+    } else if (calculatedScore < 100 || resultIA.statut === "PARTIEL") {
+      badge = "⚠️";
+      statutTxt = "PARTIEL";
+    }
+
+    const statusHtml = `${badge} Résultat : ${statutTxt} (${calculatedScore}/100)`;
     const expectedText = `💡 **Analyse de votre réponse** :\n${resultIA.commentaire}`;
     
     const explanationText = `
-✔ **Points retrouvés** : ${(resultIA.notions_presentes || []).join(", ") || "Aucun"}
-✖ **Points oubliés** : ${(resultIA.notions_manquantes || []).join(", ") || "Aucun"}
+✔ **Points retrouvés** : ${retrouvees.join(", ") || "Aucun"}
+✖ **Points oubliés** : ${manquees.join(", ") || "Aucun"}
 
 📖 **Réponse officielle** : ${currentQuestion.reponse_attendue}
     `;
