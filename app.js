@@ -19,7 +19,7 @@ function resetApiKey() {
   alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
 }
 
-// Fonction de tirage dynamique : lit le fichier .txt et extrait une question MOT À MOT via l'IA
+// Tirage dynamique : lit Questionnaire-rengagement-COSS.txt et extrait une question MOT À MOT via openai/gpt-oss-20b
 async function startSession() {
   const apiKey = getApiKey();
   if (!apiKey) return;
@@ -32,18 +32,19 @@ async function startSession() {
   );
 
   try {
-    // Read the text file directly from GitHub root
     const responseTxt = await fetch('Questionnaire-rengagement-COSS.txt');
     if (!responseTxt.ok) {
       throw new Error(`Impossible de charger le fichier texte (HTTP ${responseTxt.status})`);
     }
     const textContent = await responseTxt.text();
 
-    const promptSystem = `Tu es un extraitur de questions pour un concours de sapeurs-pompiers.
-À partir du texte du référentiel fourni ci-dessous, sélectionne UNE question de manière complètement ALEATOIRE.
+    const promptSystem = `Tu es un extracteur de questions pour un concours de sapeurs-pompiers.
+À partir du texte du référentiel fourni ci-dessous, sélectionne UNE question de manière complètement ALÉATOIRE.
 Tu dois reprendre la question ET la réponse attendue STRICTEMENT MOT À MOT, à l'identique du document, sans modifier une seule virgule ni inventer du texte.
 
-Réponds STRICTEMENT sous forme d'un objet JSON valide au format suivant (sans texte ni balises autour) :
+IMPORTANT: Tu dois répondre UNIQUEMENT sous forme d'un objet JSON valide. Ne rajoute AUCUN texte, explication, ni balise HTML ou markdown autour du JSON.
+
+Format JSON attendu :
 
 Si c'est une question rédigée / méthode :
 {
@@ -92,12 +93,16 @@ ${textContent}`;
       return;
     }
 
-    let content = data.choices[0].message.content.trim();
-    if (content.startsWith("```json")) {
-      content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    let rawContent = data.choices[0].message.content.trim();
+
+    // Isolation stricte du bloc JSON pour éviter les erreurs de parsing
+    const firstBrace = rawContent.indexOf("{");
+    const lastBrace = rawContent.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      rawContent = rawContent.substring(firstBrace, lastBrace + 1);
     }
 
-    currentQuestion = JSON.parse(content);
+    currentQuestion = JSON.parse(rawContent);
 
     // Affichage dynamique de la question extraite
     hideAllScreens();
@@ -112,168 +117,4 @@ ${textContent}`;
       document.getElementById("screen-order").classList.remove("hidden");
     } 
     else if (currentQuestion.type === "methode") {
-      document.getElementById("method-question").innerText = currentQuestion.question;
-      document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion || "💡 Lisez attentivement la question.";
-      document.getElementById("method-input").value = "";
-      document.getElementById("screen-method").classList.remove("hidden");
-    }
-
-  } catch (error) {
-    console.error(error);
-    showResult(
-      "❌ Erreur lors du tirage",
-      `Détail : ${error.message}`,
-      "Assurez-vous que le fichier 'Questionnaire-rengagement-COSS.txt' est bien présent à la racine de votre dépôt GitHub."
-    );
-  }
-}
-
-function hideAllScreens() {
-  document.getElementById("screen-start").classList.add("hidden");
-  document.getElementById("screen-vf").classList.add("hidden");
-  document.getElementById("screen-order").classList.add("hidden");
-  document.getElementById("screen-method").classList.add("hidden");
-  document.getElementById("screen-result").classList.add("hidden");
-}
-
-// 1. Validation Vrai / Faux
-function submitVF(userChoice) {
-  const isCorrect = userChoice === currentQuestion.reponse_correcte;
-  showResult(
-    isCorrect ? "✅ Bonne réponse !" : "❌ Mauvaise réponse",
-    `Réponse attendue : ${currentQuestion.reponse_correcte ? 'VRAI' : 'FAUX'}`,
-    currentQuestion.explication || ""
-  );
-}
-
-// 2. Validation Ordonnance
-function renderOrderList(items) {
-  const listEl = document.getElementById("order-list");
-  listEl.innerHTML = "";
-  items.forEach((item, index) => {
-    const li = document.createElement("li");
-    li.innerText = item;
-    li.innerHTML += `
-      <div>
-        <button onclick="moveItem(${index}, -1)">▲</button>
-        <button onclick="moveItem(${index}, 1)">▼</button>
-      </div>
-    `;
-    listEl.appendChild(li);
-  });
-}
-
-function moveItem(index, direction) {
-  const items = currentQuestion.itemsShuffled;
-  const newIndex = index + direction;
-  if (newIndex >= 0 && newIndex < items.length) {
-    const temp = items[index];
-    items[index] = items[newIndex];
-    items[newIndex] = temp;
-    renderOrderList(items);
-  }
-}
-
-function submitOrder() {
-  const isCorrect = JSON.stringify(currentQuestion.itemsShuffled) === JSON.stringify(currentQuestion.elements_a_ordonner);
-  showResult(
-    isCorrect ? "✅ Séquence parfaite !" : "⚠️ L'ordre n'est pas tout à fait correct",
-    "Ordre correct : " + currentQuestion.elements_a_ordonner.join(" ➔ "),
-    "Mémorisez bien la séquence officielle."
-  );
-}
-
-// 3. Evaluation dynamique de la réponse rédigée par le modèle openai/gpt-oss-20b
-async function submitMethod() {
-  const userText = document.getElementById("method-input").value;
-  if (!userText.trim()) {
-    alert("Veuillez saisir une réponse.");
-    return;
-  }
-
-  const apiKey = getApiKey();
-  if (!apiKey) return;
-
-  showResult(
-    "⏳ Correction par l'IA...",
-    "Analyse de votre saisie par le modèle openai/gpt-oss-20b...",
-    "Vérification des notions clés et des synonymes..."
-  );
-
-  const promptEvaluation = `Tu es un instructeur pompier évaluand un candidat.
-Compare la réponse du candidat à la réponse officielle du référentiel.
-Sois souple sur la formulation : si le candidat utilise des synonymes ou des reformulations qui traduisent la bonne idée, valide la notion.
-
-Question : ${currentQuestion.question}
-Réponse officielle : ${currentQuestion.reponse_attendue}
-Réponse saisie par le candidat : ${userText}
-
-Réponds STRICTEMENT sous forme d'un objet JSON valide avec cette structure (sans aucun texte autour) :
-{
-  "statut": "VALIDE" ou "PARTIEL" ou "INCORRECT",
-  "score": 85,
-  "notions_presentes": ["notion 1", "notion 2"],
-  "notions_manquantes": ["notion manquée"],
-  "commentaire": "Analyse pédagogique personnalisée de la saisie."
-}`;
-
-  try {
-    const response = await fetch("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-20b",
-        messages: [{ role: "user", content: promptEvaluation }],
-        temperature: 0.1
-      })
-    });
-
-    const data = await response.json();
-    let content = data.choices[0].message.content.trim();
-    if (content.startsWith("```json")) {
-      content = content.replace(/```json/g, "").replace(/```/g, "").trim();
-    }
-
-    const resultIA = JSON.parse(content);
-
-    let badge = "✅";
-    if (resultIA.statut === "PARTIEL") badge = "⚠️";
-    if (resultIA.statut === "INCORRECT") badge = "❌";
-
-    const statusHtml = `${badge} Résultat : ${resultIA.statut} (${resultIA.score}/100)`;
-    const expectedText = `💡 **Analyse de votre réponse** :\n${resultIA.commentaire}`;
-    
-    const explanationText = `
-✔ **Points retrouvés** : ${resultIA.notions_presentes.join(", ") || "Aucun"}
-✖ **Points oubliés** : ${resultIA.notions_manquantes.join(", ") || "Aucun"}
-
-📖 **Réponse officielle** : ${currentQuestion.reponse_attendue}
-    `;
-
-    showResult(statusHtml, expectedText, explanationText);
-
-  } catch (error) {
-    console.error(error);
-    showResult(
-      "❌ Erreur lors de l'analyse",
-      `Message technique : ${error.message}`,
-      "Réessayez ou vérifiez votre connexion."
-    );
-  }
-}
-
-// Affichage des résultats
-function showResult(statusHtml, expectedText, explanationText) {
-  hideAllScreens();
-  document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
-  document.getElementById("result-expected").innerText = expectedText;
-  document.getElementById("result-explanation").innerText = explanationText;
-  document.getElementById("screen-result").classList.remove("hidden");
-}
-
-function nextQuestion() {
-  startSession();
-}
+      document.getElementById("method-question").innerText = current
