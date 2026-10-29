@@ -1,6 +1,7 @@
 let questionsList = [];
 let currentQuestion = null;
 
+// Endpoint officiel de l'API Groq
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // Gestion de la clé API Groq
@@ -106,7 +107,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// Évaluation dynamique avec calcul mathématique du score et tolérance accrue
+// Évaluation dynamique avec tolérance explicite sur le vocabulaire opérationnel
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -127,14 +128,18 @@ async function submitMethod() {
   const safeOfficial = JSON.stringify(currentQuestion.reponse_attendue || "");
   const safeUserText = JSON.stringify(userText);
 
-  const promptEvaluation = `Tu es un instructeur pompier évaluant un candidat lors d'un examen.
+  const promptEvaluation = `Tu es un instructeur pompier évaluant un candidat.
 Compare la réponse du candidat à la réponse officielle du référentiel.
 
-DIRECTIVES DE CORRECTION :
-1. SOIS TRÈS SOUPLE sur la formulation et le vocabulaire :
-   - Accepte les synonymes équivalents ou appellations alternatives (ex: "jet bâton" ou "jet plein", "trottoir" ou "voie publique / chaussée", "soustraire" ou "extraire").
-   - Ne sanctionne PAS les fautes de frappe légères si l'intention technique est claire.
-2. Découpe la réponse officielle en "notions_presentes" (notions du référentiel retrouvées chez le candidat) et "notions_manquantes" (notions officiellement requises mais omises).
+DIRECTIVES D'ÉVALUATION :
+1. VALIDE LES ÉQUIVALENCES CONCEPTUELLES ET DE TERRAIN :
+   - "sur le palier" = "à l'étage" (VALIDE)
+   - "chaussée" ou "voie publique" = "trottoir" (VALIDE)
+   - "en bas de la cage d'escalier" ou "pied de conduite" = "pied de conduite montante" (VALIDE)
+   - "soustraire" = "extraire" (VALIDE)
+   - "jet bâton" = "jet plein ou bâton" (VALIDE)
+2. Ne cherche PAS les termes exacts au mot près. Si l'idée technique ou la localisation opérationnelle correspond à la réponse officielle, ajoute la notion dans "notions_presentes" et ne la mets SURTOUT PAS dans "notions_manquantes".
+3. Découpe la réponse officielle en éléments clés et classe-les uniquement selon la présence de l'idée chez le candidat.
 
 Question : ${safeQuestion}
 Réponse officielle : ${safeOfficial}
@@ -177,13 +182,11 @@ Format JSON attendu :
     const manquees = resultIA.notions_manquantes || [];
     const totalNotions = retrouvees.length + manquees.length;
 
-    // Calcul du score réel au prorata
     let calculatedScore = 100;
     if (totalNotions > 0) {
       calculatedScore = Math.round((retrouvees.length / totalNotions) * 100);
     }
 
-    // Détermination dynamique du statut et de l'émoji
     let badge = "✅";
     let statutTxt = "VALIDE";
 
