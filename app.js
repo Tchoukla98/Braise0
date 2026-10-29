@@ -1,7 +1,6 @@
 let questionsList = [];
 let currentQuestion = null;
 
-// Gestion de la clé API Groq
 function getApiKey() {
   let key = localStorage.getItem("groq_api_key");
   if (!key) {
@@ -14,13 +13,11 @@ function getApiKey() {
   return key;
 }
 
-// Réinitialiser la clé API
 function resetApiKey() {
   localStorage.removeItem("groq_api_key");
-  alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
+  alert("🔑 La clé API a été effacée !");
 }
 
-// Nettoyage sécurisé du JSON
 function cleanAndParseJSON(rawContent) {
   let cleaned = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
@@ -30,63 +27,97 @@ function cleanAndParseJSON(rawContent) {
 
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
 
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  // Si c'est un tableau JSON
+  if (firstBracket !== -1 && lastBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+    return JSON.parse(cleaned.substring(firstBracket, lastBracket + 1));
+  }
+
+  // Si c'est un objet JSON
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    return JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
   }
 
   return JSON.parse(cleaned);
 }
 
-// Chargement et découpage local du fichier texte
-async function loadQuestionsFromTxt() {
+// L'IA lit le fichier .txt et extrait dynamiquement toutes les paires question/réponse
+async function loadQuestionsWithIA() {
+  const apiKey = getApiKey();
+  if (!apiKey) return;
+
   try {
-    const response = await fetch('Questionnaire-rengagement-COSS.txt');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const text = await response.text();
+    const responseTxt = await fetch('Questionnaire-rengagement-COSS.txt');
+    if (!responseTxt.ok) throw new Error(`HTTP ${responseTxt.status}`);
+    const textContent = await responseTxt.text();
 
-    // Analyse du fichier texte (sépare par blocs de questions/réponses)
-    const blocks = text.split(/\n\s*\n/);
-    let tempQuestions = [];
+    const promptSystem = `Tu es un parseur de document officiel pour pompiers.
+Analyse le document fourni et extrait TOUTES les questions (ou consignes "Citez...", "Définition...") avec leurs réponses officielles associées.
+Conserve le texte MOT À MOT.
 
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i].trim();
-      if (!block) continue;
+Réponds STRICTEMENT sous forme d'un tableau JSON d'objets :
+[
+  {
+    "type": "methode",
+    "question": "Question ou consigne exacte du document",
+    "reponse_attendue": "Réponse officielle mot à mot"
+  }
+]
 
-      const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      if (lines.length >= 2) {
-        const questionText = lines[0];
-        const answerText = lines.slice(1).join(" ");
+Document :
+${textContent}`;
 
-        tempQuestions.push({
-          type: "methode",
-          question: questionText,
-          reponse_attendue: answerText,
-          methode_suggestion: "💡 **Méthode** : Répondez précisément avec les termes officiels du référentiel."
-        });
-      }
+    const response = await fetch("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-oss-20b",
+        messages: [{ role: "user", content: promptSystem }],
+        temperature: 0.1
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Erreur API (${response.status}) : ${errText.substring(0, 100)}`);
     }
 
-    if (tempQuestions.length > 0) {
-      questionsList = tempQuestions;
-      console.log(`${questionsList.length} questions chargées avec succès !`);
-    }
+    const data = await response.json();
+    const rawContent = data.choices[0].message.content;
+    questionsList = cleanAndParseJSON(rawContent);
+
+    console.log(`${questionsList.length} questions analysées et chargées par l'IA !`);
+
   } catch (error) {
-    console.error("Erreur de chargement du fichier texte:", error);
+    console.error("Erreur de parsing par l'IA :", error);
   }
 }
 
-// Initialisation au chargement de la page
-loadQuestionsFromTxt();
+// Initialisation au chargement
+loadQuestionsWithIA();
 
-// Tirage aléatoire local instantané
+// Tirage aléatoire instantané
 async function startSession() {
   if (questionsList.length === 0) {
-    await loadQuestionsFromTxt();
+    showResult(
+      "⏳ Chargement du référentiel...",
+      "L'IA analyse le fichier Questionnaire-rengagement-COSS.txt...",
+      "Veuillez patienter quelques secondes."
+    );
+    await loadQuestionsWithIA();
   }
 
   if (questionsList.length === 0) {
-    alert("Chargement du questionnaire en cours ou fichier inaccessible...");
+    showResult(
+      "❌ Erreur de chargement",
+      "Impossible d'analyser le fichier avec l'IA.",
+      "Vérifiez votre clé API Groq ou rafraîchissez la page."
+    );
     return;
   }
 
@@ -94,23 +125,10 @@ async function startSession() {
   currentQuestion = questionsList[randomIndex];
 
   hideAllScreens();
-  
-  if (currentQuestion.type === "vrai_faux") {
-    document.getElementById("vf-question").innerText = currentQuestion.question;
-    document.getElementById("screen-vf").classList.remove("hidden");
-  } 
-  else if (currentQuestion.type === "ordonnance") {
-    document.getElementById("order-question").innerText = currentQuestion.question;
-    currentQuestion.itemsShuffled = [...currentQuestion.elements_a_ordonner].sort(() => Math.random() - 0.5);
-    renderOrderList(currentQuestion.itemsShuffled);
-    document.getElementById("screen-order").classList.remove("hidden");
-  } 
-  else {
-    document.getElementById("method-question").innerText = currentQuestion.question;
-    document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion || "💡 Lisez attentivement la question.";
-    document.getElementById("method-input").value = "";
-    document.getElementById("screen-method").classList.remove("hidden");
-  }
+  document.getElementById("method-question").innerText = currentQuestion.question;
+  document.getElementById("method-hint").innerHTML = "💡 Répondez précisément avec les termes officiels du référentiel.";
+  document.getElementById("method-input").value = "";
+  document.getElementById("screen-method").classList.remove("hidden");
 }
 
 function hideAllScreens() {
@@ -121,54 +139,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// 1. Validation Vrai / Faux
-function submitVF(userChoice) {
-  const isCorrect = userChoice === currentQuestion.reponse_correcte;
-  showResult(
-    isCorrect ? "✅ Bonne réponse !" : "❌ Mauvaise réponse",
-    `Réponse attendue : ${currentQuestion.reponse_correcte ? 'VRAI' : 'FAUX'}`,
-    currentQuestion.explication || ""
-  );
-}
-
-// 2. Validation Ordonnance
-function renderOrderList(items) {
-  const listEl = document.getElementById("order-list");
-  listEl.innerHTML = "";
-  items.forEach((item, index) => {
-    const li = document.createElement("li");
-    li.innerText = item;
-    li.innerHTML += `
-      <div>
-        <button onclick="moveItem(${index}, -1)">▲</button>
-        <button onclick="moveItem(${index}, 1)">▼</button>
-      </div>
-    `;
-    listEl.appendChild(li);
-  });
-}
-
-function moveItem(index, direction) {
-  const items = currentQuestion.itemsShuffled;
-  const newIndex = index + direction;
-  if (newIndex >= 0 && newIndex < items.length) {
-    const temp = items[index];
-    items[index] = items[newIndex];
-    items[newIndex] = temp;
-    renderOrderList(items);
-  }
-}
-
-function submitOrder() {
-  const isCorrect = JSON.stringify(currentQuestion.itemsShuffled) === JSON.stringify(currentQuestion.elements_a_ordonner);
-  showResult(
-    isCorrect ? "✅ Séquence parfaite !" : "⚠️ L'ordre n'est pas tout à fait correct",
-    "Ordre correct : " + currentQuestion.elements_a_ordonner.join(" ➔ "),
-    "Mémorisez bien la séquence officielle."
-  );
-}
-
-// 3. Évaluation dynamique avec openai/gpt-oss-20b
+// Évaluation dynamique de la réponse par openai/gpt-oss-20b
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -197,7 +168,7 @@ Question : ${safeQuestion}
 Réponse officielle : ${safeOfficial}
 Réponse saisie par le candidat : ${safeUserText}
 
-Réponds STRICTEMENT sous la forme d'un objet JSON brut (sans texte ni markdown).
+Réponds STRICTEMENT sous la forme d'un objet JSON brut.
 
 Format JSON attendu :
 {
@@ -257,7 +228,6 @@ Format JSON attendu :
   }
 }
 
-// Affichage des résultats
 function showResult(statusHtml, expectedText, explanationText) {
   hideAllScreens();
   document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
