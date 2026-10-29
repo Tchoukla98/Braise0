@@ -1,6 +1,9 @@
 let questionsList = [];
 let currentQuestion = null;
 
+// Endpoint officiel de l'API Groq
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+
 // Gestion de la clé API Groq
 function getApiKey() {
   let key = localStorage.getItem("groq_api_key");
@@ -38,7 +41,7 @@ function cleanAndParseJSON(rawContent) {
   return JSON.parse(cleaned);
 }
 
-// Chargement hyper fiable grâce aux balises <Q> et <R>
+// Chargement à partir des balises <Q> et <R>
 async function loadQuestionsFromTxt() {
   try {
     const response = await fetch('Questionnaire-rengagement-COSS.txt');
@@ -75,14 +78,14 @@ async function loadQuestionsFromTxt() {
 // Initialisation au chargement de la page
 loadQuestionsFromTxt();
 
-// Tirage aléatoire instantané
+// Tirage aléatoire instantané local
 async function startSession() {
   if (questionsList.length === 0) {
     await loadQuestionsFromTxt();
   }
 
   if (questionsList.length === 0) {
-    alert("Chargement du questionnaire en cours ou fichier inaccessible...");
+    alert("Chargement du questionnaire en cours ou fichier 'Questionnaire-rengagement-COSS.txt' inaccessible...");
     return;
   }
 
@@ -104,7 +107,7 @@ function hideAllScreens() {
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// Évaluation dynamique avec le modèle openai/gpt-oss-20b
+// Évaluation dynamique via l'API Groq (openai/gpt-oss-20b)
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -145,7 +148,8 @@ Format JSON attendu :
 }`;
 
   try {
-    const response = await fetch("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", {
+    // Requête POST envoyée STRICTEMENT à l'API Groq
+    const response = await fetch(GROQ_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
