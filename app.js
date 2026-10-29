@@ -186,7 +186,7 @@ Réponds STRICTEMENT sous forme d'objet JSON valide avec cette structure (sans t
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: "openai/gpt-oss-20b",
         messages: [{ role: "user", content: promptSystem }],
         temperature: 0.1
       })
