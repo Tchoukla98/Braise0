@@ -128,10 +128,11 @@ async function submitMethod() {
   const safeOfficial = JSON.stringify(currentQuestion.reponse_attendue || "");
   const safeUserText = JSON.stringify(userText);
 
-  const promptEvaluation = `Tu es un instructeur pompier évaluant un candidat.
+    const promptEvaluation = `Tu es un instructeur pompier évaluant un candidat.
 Compare la réponse du candidat à la réponse officielle du référentiel.
 Sois souple sur la formulation : si le candidat utilise des synonymes ou des reformulations qui traduisent la bonne idée, valide la notion.
 
+  
 Question : ${safeQuestion}
 Réponse officielle : ${safeOfficial}
 Réponse saisie par le candidat : ${safeUserText}
