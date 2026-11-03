@@ -1,6 +1,7 @@
 let questionsList = [];
+let remainingQuestions = []; // Tableau de travail : les questions non encore posées
 let currentQuestion = null;
-let customDocuments = {}; // Stockage des documents personnalisés
+let customDocuments = {};
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -113,7 +114,7 @@ async function handleFileUpload() {
     const extractedQuestions = parseBalisesText(textContent);
 
     if (extractedQuestions.length === 0) {
-      alert("⚠️ Aucune question trouvée. Assurez-vous que le texte contient des balises <Q>...</Q> et <R>...</R> ou des tournures 'Question?' / 'Réponse'.");
+      alert("⚠️ Aucune question trouvée dans le fichier.");
       return;
     }
 
@@ -134,7 +135,6 @@ async function handleFileUpload() {
   }
 }
 
-// Extraction du texte d'un PDF via PDF.js
 async function extractTextFromPDF(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -150,11 +150,8 @@ async function extractTextFromPDF(file) {
   return fullText;
 }
 
-// Parser générique de balises <Q> et <R> ou de structures Question / Réponse
 function parseBalisesText(text) {
   let tempQuestions = [];
-
-  // 1. Recherche par balises stictes <Q>...</Q> et <R>...</R>
   const regex = /<Q>([\s\S]*?)<\/Q>[\s\n\r]*<R>([\s\S]*?)<\/R>/g;
   let match;
 
@@ -171,7 +168,6 @@ function parseBalisesText(text) {
     }
   }
 
-  // 2. Si pas de balises, découpage alternatif par points d'interrogation / deux-points
   if (tempQuestions.length === 0) {
     const altRegex = /([^?:\n\r][^?:\r\n]*[?:])\s*([\s\S]*?)(?=(?:[^?:\n\r][^?:\r\n]*[?:])|$)/g;
     while ((match = altRegex.exec(text)) !== null) {
@@ -198,35 +194,50 @@ async function loadQuestionsFromTxt() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
     questionsList = parseBalisesText(text);
+    remainingQuestions = [...questionsList]; // Initialise la pile restante
   } catch (error) {
     console.error("Erreur de chargement du fichier par défaut:", error);
   }
 }
 
-// --- TIRAGE ET SESSION DE RÉVISION ---
+// --- TIRAGE SANS DOUBLONS ---
 async function startSession() {
   const selectedDocId = document.getElementById("doc-selector").value;
 
+  // Si on change de document ou si le tableau restant est vide, on réinitialise la pile
   if (selectedDocId === "default") {
     if (questionsList.length === 0) await loadQuestionsFromTxt();
+    if (remainingQuestions.length === 0) {
+      alert("🔄 Vous avez parcouru toutes les questions ! Le cycle redémarre.");
+      remainingQuestions = [...questionsList];
+    }
   } else if (customDocuments[selectedDocId]) {
-    questionsList = customDocuments[selectedDocId].questions;
+    const docQuestions = customDocuments[selectedDocId].questions;
+    if (remainingQuestions.length === 0 || currentDocId !== selectedDocId) {
+      remainingQuestions = [...docQuestions];
+      currentDocId = selectedDocId;
+    }
   }
 
-  if (!questionsList || questionsList.length === 0) {
+  if (!remainingQuestions || remainingQuestions.length === 0) {
     alert("Aucune question disponible pour ce document.");
     return;
   }
 
-  const randomIndex = Math.floor(Math.random() * questionsList.length);
-  currentQuestion = questionsList[randomIndex];
+  // 1. Tirage au hasard dans la pile restante
+  const randomIndex = Math.floor(Math.random() * remainingQuestions.length);
+  
+  // 2. Extraire la question ET la supprimer du tableau restant (équivalent de Windev)
+  currentQuestion = remainingQuestions.splice(randomIndex, 1)[0];
 
   hideAllScreens();
   document.getElementById("method-question").innerText = currentQuestion.question;
-  document.getElementById("method-hint").innerHTML = currentQuestion.methode_suggestion;
+  document.getElementById("method-hint").innerHTML = `${currentQuestion.methode_suggestion} <br><em>(Reste : ${remainingQuestions.length} question(s) dans cette session)</em>`;
   document.getElementById("method-input").value = "";
   document.getElementById("screen-method").classList.remove("hidden");
 }
+
+let currentDocId = "default";
 
 function hideAllScreens() {
   document.getElementById("screen-start").classList.add("hidden");
@@ -248,7 +259,7 @@ function cleanAndParseJSON(rawContent) {
   return JSON.parse(cleaned);
 }
 
-// --- ÉVALUATION AVEC OPENAI/GPT-OSS-20B VIA GROQ ---
+// --- ÉVALUATION DYNAMIQUE AVEC GROQ ---
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
