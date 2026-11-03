@@ -1,5 +1,5 @@
 let questionsList = [];
-let remainingQuestions = []; // Pile dynamique des questions non encore posées
+let remainingQuestions = []; // Pile de travail des questions non encore posées
 let currentQuestion = null;
 let customDocuments = {};
 let currentDocId = null;
@@ -153,14 +153,16 @@ async function extractTextFromPDF(file) {
   return fullText;
 }
 
+// Extraction robuste tolérant les balises imparfaites
 function parseBalisesText(text) {
   let tempQuestions = [];
-  const regex = /<Q>([\s\S]*?)<\/Q>[\s\n\r]*<R>([\s\S]*?)<\/R>/g;
+  const regex = /<Q>([\s\S]*?)(?:<\/Q>|<\/R>|\n\s*<R>)[\s\n\r]*<R>([\s\S]*?)<\/R>/g;
   let match;
 
   while ((match = regex.exec(text)) !== null) {
-    const q = match[1].replace(/[\r\n]+/g, " ").trim();
-    const r = match[2].replace(/[\r\n]+/g, " ").trim();
+    let q = match[1].replace(/<[^>]+>/g, "").replace(/[\r\n]+/g, " ").trim();
+    let r = match[2].replace(/<[^>]+>/g, "").replace(/[\r\n]+/g, " ").trim();
+
     if (q && r) {
       tempQuestions.push({
         type: "methode",
@@ -190,7 +192,7 @@ function parseBalisesText(text) {
   return tempQuestions;
 }
 
-// Chargement initial unique du fichier par défaut
+// Chargement initial du document par défaut
 async function initDefaultDocument() {
   try {
     const response = await fetch('Questionnaire-rengagement-COSS.txt');
@@ -198,7 +200,6 @@ async function initDefaultDocument() {
     const text = await response.text();
     questionsList = parseBalisesText(text);
     
-    // Initialisation de la pile de travail uniquement si elle est vide
     if (remainingQuestions.length === 0 && currentDocId !== "default") {
       remainingQuestions = [...questionsList];
       currentDocId = "default";
@@ -212,7 +213,6 @@ async function initDefaultDocument() {
 async function startSession() {
   const selectedDocId = document.getElementById("doc-selector").value;
 
-  // 1. Détection du changement de document
   if (currentDocId !== selectedDocId) {
     currentDocId = selectedDocId;
     if (selectedDocId === "default") {
@@ -223,7 +223,6 @@ async function startSession() {
     }
   }
 
-  // 2. Si le cycle est fini (toutes les questions tirées), on réinitialise la pile
   if (remainingQuestions.length === 0) {
     const sourcePool = (selectedDocId === "default") ? questionsList : customDocuments[selectedDocId].questions;
     alert("🔄 Félicitations ! Vous avez parcouru la totalité des questions du document. Le cycle redémarre.");
@@ -235,10 +234,7 @@ async function startSession() {
     return;
   }
 
-  // 3. Tirage aléatoire dans la pile restante
   const randomIndex = Math.floor(Math.random() * remainingQuestions.length);
-  
-  // 4. Extraction et suppression physique de l'élément (impossible de retomber dessus)
   currentQuestion = remainingQuestions.splice(randomIndex, 1)[0];
 
   hideAllScreens();
