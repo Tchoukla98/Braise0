@@ -1,10 +1,17 @@
 let questionsList = [];
 let currentQuestion = null;
+let customDocuments = {}; // Stockage des documents personnalisés
 
-// Endpoint officiel de l'API Groq
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-// Gestion de la clé API Groq
+// Initialisation au chargement de la page
+window.addEventListener("DOMContentLoaded", () => {
+  loadCustomDocuments();
+  updateDocSelector();
+  loadQuestionsFromTxt(); // Chargement du document par défaut
+});
+
+// --- GESTION DE LA CLÉ API ---
 function getApiKey() {
   let key = localStorage.getItem("groq_api_key");
   if (!key) {
@@ -17,75 +24,197 @@ function getApiKey() {
   return key;
 }
 
-// Réinitialiser la clé API
 function resetApiKey() {
   localStorage.removeItem("groq_api_key");
   alert("🔑 La clé API a été effacée ! Une nouvelle clé vous sera demandée.");
 }
 
-// Nettoyage JSON des réponses de l'IA
-function cleanAndParseJSON(rawContent) {
-  let cleaned = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
-  }
-
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
-
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-  }
-
-  return JSON.parse(cleaned);
+// --- GESTION DES PARAMÈTRES ET DOCUMENTS ---
+function showSettings() {
+  hideAllScreens();
+  renderSavedDocsList();
+  document.getElementById("screen-settings").classList.remove("hidden");
 }
 
-// Chargement à partir des balises <Q> et <R>
+function loadCustomDocuments() {
+  const saved = localStorage.getItem("braise0_custom_docs");
+  if (saved) {
+    try { customDocuments = JSON.parse(saved); } catch (e) { customDocuments = {}; }
+  }
+}
+
+function saveCustomDocuments() {
+  localStorage.setItem("braise0_custom_docs", JSON.stringify(customDocuments));
+  updateDocSelector();
+  renderSavedDocsList();
+}
+
+function updateDocSelector() {
+  const selector = document.getElementById("doc-selector");
+  selector.innerHTML = '<option value="default">Questionnaire COSS (Défaut)</option>';
+  
+  for (const docId in customDocuments) {
+    const option = document.createElement("option");
+    option.value = docId;
+    option.innerText = customDocuments[docId].title;
+    selector.appendChild(option);
+  }
+}
+
+function renderSavedDocsList() {
+  const listEl = document.getElementById("saved-docs-list");
+  listEl.innerHTML = "";
+
+  const keys = Object.keys(customDocuments);
+  if (keys.length === 0) {
+    listEl.innerHTML = "<li><em>Aucun document personnalisé importé.</em></li>";
+    return;
+  }
+
+  keys.forEach(docId => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <strong>${customDocuments[docId].title}</strong> (${customDocuments[docId].questions.length} questions)
+      <button onclick="deleteDocument('${docId}')" class="btn-danger-sm">🗑️ Supprimer</button>
+    `;
+    listEl.appendChild(li);
+  });
+}
+
+function deleteDocument(docId) {
+  if (confirm("Voulez-vous vraiment supprimer ce document ?")) {
+    delete customDocuments[docId];
+    saveCustomDocuments();
+  }
+}
+
+// --- IMPORTATION ET EXTRACTION (PDF / TXT) ---
+async function handleFileUpload() {
+  const titleInput = document.getElementById("import-title");
+  const fileInput = document.getElementById("import-file");
+
+  const title = titleInput.value.trim();
+  const file = fileInput.files[0];
+
+  if (!title || !file) {
+    alert("Veuillez remplir le titre et sélectionner un fichier.");
+    return;
+  }
+
+  let textContent = "";
+
+  try {
+    if (file.name.endsWith(".pdf")) {
+      textContent = await extractTextFromPDF(file);
+    } else {
+      textContent = await file.text();
+    }
+
+    const extractedQuestions = parseBalisesText(textContent);
+
+    if (extractedQuestions.length === 0) {
+      alert("⚠️ Aucune question trouvée. Assurez-vous que le texte contient des balises <Q>...</Q> et <R>...</R> ou des tournures 'Question?' / 'Réponse'.");
+      return;
+    }
+
+    const docId = "doc_" + Date.now();
+    customDocuments[docId] = {
+      title: title,
+      questions: extractedQuestions
+    };
+
+    saveCustomDocuments();
+    titleInput.value = "";
+    fileInput.value = "";
+    alert(`✅ Document "${title}" enregistré avec succès (${extractedQuestions.length} questions) !`);
+
+  } catch (error) {
+    console.error(error);
+    alert("Erreur lors de la lecture du fichier : " + error.message);
+  }
+}
+
+// Extraction du texte d'un PDF via PDF.js
+async function extractTextFromPDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = "";
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => item.str).join(" ");
+    fullText += pageText + "\n";
+  }
+
+  return fullText;
+}
+
+// Parser générique de balises <Q> et <R> ou de structures Question / Réponse
+function parseBalisesText(text) {
+  let tempQuestions = [];
+
+  // 1. Recherche par balises stictes <Q>...</Q> et <R>...</R>
+  const regex = /<Q>([\s\S]*?)<\/Q>[\s\n\r]*<R>([\s\S]*?)<\/R>/g;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    const q = match[1].replace(/[\r\n]+/g, " ").trim();
+    const r = match[2].replace(/[\r\n]+/g, " ").trim();
+    if (q && r) {
+      tempQuestions.push({
+        type: "methode",
+        question: q,
+        reponse_attendue: r,
+        methode_suggestion: "💡 **Méthode** : Répondez précisément avec les termes officiels du référentiel."
+      });
+    }
+  }
+
+  // 2. Si pas de balises, découpage alternatif par points d'interrogation / deux-points
+  if (tempQuestions.length === 0) {
+    const altRegex = /([^?:\n\r][^?:\r\n]*[?:])\s*([\s\S]*?)(?=(?:[^?:\n\r][^?:\r\n]*[?:])|$)/g;
+    while ((match = altRegex.exec(text)) !== null) {
+      const q = match[1].replace(/[\r\n]+/g, " ").trim();
+      const r = match[2].replace(/[\r\n]+/g, " ").trim();
+      if (q.length > 5 && r.length > 0) {
+        tempQuestions.push({
+          type: "methode",
+          question: q,
+          reponse_attendue: r,
+          methode_suggestion: "💡 **Méthode** : Répondez précisément avec les termes officiels du référentiel."
+        });
+      }
+    }
+  }
+
+  return tempQuestions;
+}
+
+// --- CHARGEMENT DU FICHIER PAR DÉFAUT ---
 async function loadQuestionsFromTxt() {
   try {
     const response = await fetch('Questionnaire-rengagement-COSS.txt');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
-
-    const regex = /<Q>([\s\S]*?)<\/Q>[\s\n\r]*<R>([\s\S]*?)<\/R>/g;
-    let match;
-    let tempQuestions = [];
-
-    while ((match = regex.exec(text)) !== null) {
-      const questionText = match[1].replace(/[\r\n]+/g, " ").trim();
-      const answerText = match[2].replace(/[\r\n]+/g, " ").trim();
-
-      if (questionText && answerText) {
-        tempQuestions.push({
-          type: "methode",
-          question: questionText,
-          reponse_attendue: answerText,
-          methode_suggestion: "💡 **Méthode** : Répondez précisément avec les termes officiels du référentiel."
-        });
-      }
-    }
-
-    if (tempQuestions.length > 0) {
-      questionsList = tempQuestions;
-      console.log(`${questionsList.length} questions chargées avec succès !`);
-    }
+    questionsList = parseBalisesText(text);
   } catch (error) {
-    console.error("Erreur de chargement du fichier texte:", error);
+    console.error("Erreur de chargement du fichier par défaut:", error);
   }
 }
 
-// Initialisation au chargement de la page
-loadQuestionsFromTxt();
-
-// Tirage aléatoire instantané local
+// --- TIRAGE ET SESSION DE RÉVISION ---
 async function startSession() {
-  if (questionsList.length === 0) {
-    await loadQuestionsFromTxt();
+  const selectedDocId = document.getElementById("doc-selector").value;
+
+  if (selectedDocId === "default") {
+    if (questionsList.length === 0) await loadQuestionsFromTxt();
+  } else if (customDocuments[selectedDocId]) {
+    questionsList = customDocuments[selectedDocId].questions;
   }
 
-  if (questionsList.length === 0) {
-    alert("Chargement du questionnaire en cours ou fichier 'Questionnaire-rengagement-COSS.txt' inaccessible...");
+  if (!questionsList || questionsList.length === 0) {
+    alert("Aucune question disponible pour ce document.");
     return;
   }
 
@@ -101,13 +230,25 @@ async function startSession() {
 
 function hideAllScreens() {
   document.getElementById("screen-start").classList.add("hidden");
-  document.getElementById("screen-vf").classList.add("hidden");
-  document.getElementById("screen-order").classList.add("hidden");
+  document.getElementById("screen-settings").classList.add("hidden");
   document.getElementById("screen-method").classList.add("hidden");
   document.getElementById("screen-result").classList.add("hidden");
 }
 
-// Évaluation dynamique avec inversion des encarts et tolérance grammaticale
+function cleanAndParseJSON(rawContent) {
+  let cleaned = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
+  }
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  return JSON.parse(cleaned);
+}
+
+// --- ÉVALUATION AVEC OPENAI/GPT-OSS-20B VIA GROQ ---
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
@@ -201,7 +342,7 @@ Format JSON attendu :
 
     const statusHtml = `${badge} Résultat : ${statutTxt} (${calculatedScore}/100)`;
     
-    // Encart 1 (Analyse / Explication) : placé en premier, avec votre réponse saisie tout en haut
+    // Encart 1 : Votre réponse + Analyse
     const explanationText = `
 ✍️ **Votre réponse** : ${userText}
 
@@ -211,10 +352,9 @@ Format JSON attendu :
 📖 **Réponse officielle** : ${currentQuestion.reponse_attendue}
     `;
 
-    // Encart 2 (Correction officielle / Commentaire détaillé de l'IA) : placé en second
+    // Encart 2 : Commentaire IA
     const expectedText = `💡 **Commentaire détaillé de l'IA** :\n${resultIA.commentaire}`;
 
-    // Passage des arguments inversé : Encart Explication au-dessus de l'Analyse officielle
     showResult(statusHtml, explanationText, expectedText);
 
   } catch (error) {
@@ -227,7 +367,6 @@ Format JSON attendu :
   }
 }
 
-// Affichage des résultats
 function showResult(statusHtml, expectedText, explanationText) {
   hideAllScreens();
   document.getElementById("result-status").innerHTML = `<h3>${statusHtml}</h3>`;
