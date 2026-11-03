@@ -2,7 +2,7 @@
 <R>La stricte observation des ordres reçus / la recherche à son niveau du résultat escompté et de l’exécution parfaite de tous les actes y concourant.</R>
 
 <Q>Qu’impose en particulier la discipline au feu ?</Q>
-<R>De se protéger physiquement avec les moyens convenables / de conserver son sang-froid et sa sérénité / d’opérer en silence en toute circonstance / de rester constamment en binôme / de rendre compte à son chef sans délai de tout fait nouveau ou toute initiative.</R>
+<R>De se protéger physiquement avec les moyens convenables / de conserver son sang-froid et sa sérénité / d’opérer en silence en toute circonstance / de rester constantly en binôme / de rendre compte à son chef sans délai de tout fait nouveau ou toute initiative.</R>
 
 <Q>Citez les 3 types de jet que peut utiliser le porte lance :</Q>
 <R>Jet diffusé d’attaque / jet diffusé de protection / jet plein ou bâton</R>
@@ -49,7 +49,7 @@
 <Q>Citez les types d’incendie que l’on distingue globalement :</Q>
 <R>Feux de contenants / feux de contenus et feux divers</R>
 
-<Q>Citez les agents, procédés et moyens d’extinction :</Q>
+<Q>Citez les agents, procédés et moyens d’extinction :</R>
 <R>Eau / terre sable ciment , linges humides / la mousse / extincteurs / couvertures pour les feux sur les personnes / produits mouillant ou retardant.</R>
 
 <Q>Quels sont ls signes visibles de l’extérieur qui permettent de craindre la survenue imminente d’une explosion de fumée ?</Q>
@@ -58,7 +58,7 @@
 <Q>Ou pouvons-nous barrer le gaz ?</Q>
 <R>Sur trottoir / en façade / en pied de conduite montante / à l’étage</R>
 
-<Q>Qu’est-il interdit concernant le GAZ ?</R>
+<Q>Qu’est-il interdit concernant le GAZ ?</Q>
 <R>De manœuvrer un barrage où l’indication "réseau" apparaît / d’ouvrir à nouveau un barrage général.</R>
 
 <Q>Citez la marche général des opérations :</Q>
