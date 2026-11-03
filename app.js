@@ -1,15 +1,16 @@
 let questionsList = [];
-let remainingQuestions = []; // Tableau de travail : les questions non encore posées
+let remainingQuestions = []; // Pile dynamique des questions non encore posées
 let currentQuestion = null;
 let customDocuments = {};
+let currentDocId = null;
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // Initialisation au chargement de la page
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   loadCustomDocuments();
   updateDocSelector();
-  loadQuestionsFromTxt(); // Chargement du document par défaut
+  await initDefaultDocument();
 });
 
 // --- GESTION DE LA CLÉ API ---
@@ -52,6 +53,7 @@ function saveCustomDocuments() {
 
 function updateDocSelector() {
   const selector = document.getElementById("doc-selector");
+  if (!selector) return;
   selector.innerHTML = '<option value="default">Questionnaire COSS (Défaut)</option>';
   
   for (const docId in customDocuments) {
@@ -64,6 +66,7 @@ function updateDocSelector() {
 
 function renderSavedDocsList() {
   const listEl = document.getElementById("saved-docs-list");
+  if (!listEl) return;
   listEl.innerHTML = "";
 
   const keys = Object.keys(customDocuments);
@@ -187,57 +190,63 @@ function parseBalisesText(text) {
   return tempQuestions;
 }
 
-// --- CHARGEMENT DU FICHIER PAR DÉFAUT ---
-async function loadQuestionsFromTxt() {
+// Chargement initial unique du fichier par défaut
+async function initDefaultDocument() {
   try {
     const response = await fetch('Questionnaire-rengagement-COSS.txt');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
     questionsList = parseBalisesText(text);
-    remainingQuestions = [...questionsList]; // Initialise la pile restante
+    
+    // Initialisation de la pile de travail uniquement si elle est vide
+    if (remainingQuestions.length === 0 && currentDocId !== "default") {
+      remainingQuestions = [...questionsList];
+      currentDocId = "default";
+    }
   } catch (error) {
     console.error("Erreur de chargement du fichier par défaut:", error);
   }
 }
 
-// --- TIRAGE SANS DOUBLONS ---
+// --- TIRAGE STRICTEMENT SANS DOUBLON ---
 async function startSession() {
   const selectedDocId = document.getElementById("doc-selector").value;
 
-  // Si on change de document ou si le tableau restant est vide, on réinitialise la pile
-  if (selectedDocId === "default") {
-    if (questionsList.length === 0) await loadQuestionsFromTxt();
-    if (remainingQuestions.length === 0) {
-      alert("🔄 Vous avez parcouru toutes les questions ! Le cycle redémarre.");
+  // 1. Détection du changement de document
+  if (currentDocId !== selectedDocId) {
+    currentDocId = selectedDocId;
+    if (selectedDocId === "default") {
+      if (questionsList.length === 0) await initDefaultDocument();
       remainingQuestions = [...questionsList];
-    }
-  } else if (customDocuments[selectedDocId]) {
-    const docQuestions = customDocuments[selectedDocId].questions;
-    if (remainingQuestions.length === 0 || currentDocId !== selectedDocId) {
-      remainingQuestions = [...docQuestions];
-      currentDocId = selectedDocId;
+    } else if (customDocuments[selectedDocId]) {
+      remainingQuestions = [...customDocuments[selectedDocId].questions];
     }
   }
 
-  if (!remainingQuestions || remainingQuestions.length === 0) {
+  // 2. Si le cycle est fini (toutes les questions tirées), on réinitialise la pile
+  if (remainingQuestions.length === 0) {
+    const sourcePool = (selectedDocId === "default") ? questionsList : customDocuments[selectedDocId].questions;
+    alert("🔄 Félicitations ! Vous avez parcouru la totalité des questions du document. Le cycle redémarre.");
+    remainingQuestions = [...sourcePool];
+  }
+
+  if (remainingQuestions.length === 0) {
     alert("Aucune question disponible pour ce document.");
     return;
   }
 
-  // 1. Tirage au hasard dans la pile restante
+  // 3. Tirage aléatoire dans la pile restante
   const randomIndex = Math.floor(Math.random() * remainingQuestions.length);
   
-  // 2. Extraire la question ET la supprimer du tableau restant (équivalent de Windev)
+  // 4. Extraction et suppression physique de l'élément (impossible de retomber dessus)
   currentQuestion = remainingQuestions.splice(randomIndex, 1)[0];
 
   hideAllScreens();
   document.getElementById("method-question").innerText = currentQuestion.question;
-  document.getElementById("method-hint").innerHTML = `${currentQuestion.methode_suggestion} <br><em>(Reste : ${remainingQuestions.length} question(s) dans cette session)</em>`;
+  document.getElementById("method-hint").innerHTML = `${currentQuestion.methode_suggestion} <br><em>(Reste : ${remainingQuestions.length} question(s) non posée(s))</em>`;
   document.getElementById("method-input").value = "";
   document.getElementById("screen-method").classList.remove("hidden");
 }
-
-let currentDocId = "default";
 
 function hideAllScreens() {
   document.getElementById("screen-start").classList.add("hidden");
@@ -259,7 +268,7 @@ function cleanAndParseJSON(rawContent) {
   return JSON.parse(cleaned);
 }
 
-// --- ÉVALUATION DYNAMIQUE AVEC GROQ ---
+// --- ÉVALUATION AVEC OPENAI/GPT-OSS-20B VIA GROQ ---
 async function submitMethod() {
   const userText = document.getElementById("method-input").value;
   if (!userText.trim()) {
