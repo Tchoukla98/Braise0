@@ -3,81 +3,103 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Braise0 — Révision Pompiers</title>
+  <title>Braise0 — Révision Pompier</title>
   <link rel="stylesheet" href="style.css">
   
+  <!-- Bibliothèque PDF.js pour lire les fichiers PDF localement dans le navigateur -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
 </head>
 <body>
 
-  <header>
-    <h1>🔥 Braise0</h1>
-    <p>Application de révision — Concours & Rengagement</p>
-    <button onclick="resetApiKey()" class="btn-secondary" style="margin-top: 10px; background-color: #475569;">
-  🔑 Réinitialiser la clé API Groq
-    </button>
-  </header>
-
-  <main class="container">
-    <!-- Écran d'accueil -->
-    <div id="screen-start" class="card">
-      <h2>Prêt pour la révision ?</h2>
-      <p>L'IA va sélectionner des questions aléatoires dans ta base de connaissances.</p>
-      <button onclick="startSession()" class="btn-primary">Lancer un tirage aléatoire</button>
-    </div>
-
-    <!-- Écran VRAI / FAUX -->
-    <div id="screen-vf" class="card hidden">
-      <span class="badge badge-vf">Vrai / Faux</span>
-      <h3 id="vf-question"></h3>
+  <div class="app-container">
+    <header>
+      <h1>🔥 Braise0</h1>
+      <p>Application de révision — Concours & Rengagement</p>
       
-      <div class="options-group">
-        <button onclick="submitVF(true)" class="btn-vf btn-vrai">VRAI</button>
-        <button onclick="submitVF(false)" class="btn-vf btn-faux">FAUX</button>
+      <div class="header-buttons">
+        <button onclick="resetApiKey()" class="btn-secondary">🔑 Clé API Groq</button>
+        <button onclick="showSettings()" class="btn-secondary">⚙️ Paramètres & Documents</button>
       </div>
-    </div>
+    </header>
 
-    <!-- Écran ORDONNANCE (Mettre dans l'ordre) -->
-    <div id="screen-order" class="card hidden">
-      <span class="badge badge-order">Ordre Chronologique</span>
-      <h3 id="order-question"></h3>
-      <p class="hint">💡 Utilise les flèches pour remettre les éléments dans le bon ordre :</p>
+    <!-- ÉCRAN D'ACCUEIL / SÉLECTION DU DOCUMENT -->
+    <main id="screen-start" class="card">
+      <h2>Lancer une session</h2>
       
-      <ul id="order-list" class="sortable-list"></ul>
-
-      <button onclick="submitOrder()" class="btn-primary">Valider la séquence</button>
-    </div>
-
-    <!-- Écran MÉTHODE DE RÉPONSE (Saisie libre avec IA) -->
-    <div id="screen-method" class="card hidden">
-      <span class="badge badge-method">Réponse Rédigée</span>
-      <h3 id="method-question"></h3>
-      
-      <div class="ai-suggestion" id="method-hint">
-        <!-- Rempli par le script -->
+      <div class="form-group">
+        <label for="doc-selector"><strong>📖 Choisir le référentiel à réviser :</strong></label>
+        <select id="doc-selector" class="select-input">
+          <option value="default">Questionnaire COSS (Défaut)</option>
+        </select>
       </div>
 
-      <textarea id="method-input" rows="5" placeholder="Saisissez votre réponse ici..."></textarea>
+      <button onclick="startSession()" class="btn-primary">🎲 Lancer un tirage</button>
+    </main>
+
+    <!-- ÉCRAN DES PARAMÈTRES & IMPORTS -->
+    <main id="screen-settings" class="card hidden">
+      <h2>⚙️ Paramètres & Gestion des Documents</h2>
+      
+      <div class="settings-section">
+        <h3>📄 Importer un nouveau document (PDF ou TXT)</h3>
+        <p class="hint">Téléversez un document pour l'ajouter à vos sujets de révision.</p>
+
+        <div class="form-group">
+          <label for="import-title">Titre du document :</label>
+          <input type="text" id="import-title" placeholder="Ex: Secourisme - SAP" class="text-input">
+        </div>
+
+        <div class="form-group">
+          <label for="import-file">Fichier (PDF ou TXT) :</label>
+          <input type="file" id="import-file" accept=".pdf,.txt" class="file-input">
+        </div>
+
+        <button onclick="handleFileUpload()" class="btn-primary">📥 Extraire et Sauvegarder</button>
+      </div>
+
+      <hr>
+
+      <div class="settings-section">
+        <h3>📚 Documents enregistrés</h3>
+        <ul id="saved-docs-list" class="docs-list">
+          <!-- Liste dynamique des documents -->
+        </ul>
+      </div>
+
+      <button onclick="hideAllScreens(); document.getElementById('screen-start').classList.remove('hidden');" class="btn-secondary">⬅️ Retour à l'accueil</button>
+    </main>
+
+    <!-- ÉCRAN DES QUESTIONS (MÉTHODE / RÉDIGÉE) -->
+    <main id="screen-method" class="card hidden">
+      <span class="badge">Réponse Rédigée</span>
+      <h3 id="method-question" class="question-title">Chargement...</h3>
+      <p id="method-hint" class="hint"></p>
+      
+      <textarea id="method-input" placeholder="Saisissez votre réponse ici..." rows="4"></textarea>
+      
       <button onclick="submitMethod()" class="btn-primary">Valider et faire corriger</button>
-    </div>
+    </main>
 
-    <!-- Écran CORRECTION / RÉSULTAT IA -->
-    <div id="screen-result" class="card hidden">
-      <h2>Correction & Analyse IA</h2>
+    <!-- ÉCRAN DES RÉSULTATS -->
+    <main id="screen-result" class="card hidden">
       <div id="result-status"></div>
-      
+
+      <!-- Encart 1 : Explication & Réponses (votre réponse vs officielle) -->
       <div class="result-box">
-        <h4>Correction officielle :</h4>
-        <p id="result-expected"></p>
+        <p id="result-explanation" class="text-content"></p>
       </div>
 
-      <div class="result-box explanation">
-        <h4>Explication / Analyse :</h4>
-        <p id="result-explanation"></p>
+      <!-- Encart 2 : Commentaire détaillé IA -->
+      <div class="result-box highlight-box">
+        <p id="result-expected" class="text-content"></p>
       </div>
 
-      <button onclick="nextQuestion()" class="btn-secondary">Question suivante ➔</button>
-    </div>
-  </main>
+      <button onclick="nextQuestion()" class="btn-primary">Question suivante ➔</button>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>
